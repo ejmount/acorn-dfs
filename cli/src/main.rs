@@ -1,4 +1,4 @@
-use acorn_dfs::structures::FreeSpaceMap;
+use acorn_dfs::old_map::FreeSpaceMap;
 
 static DATA: &[u8] =
     include_bytes!("../../lib/test_images/0344_ComputerConcepts_TurboDrivers_HP1_fluxengine.img");

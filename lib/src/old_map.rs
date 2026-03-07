@@ -49,31 +49,32 @@ impl FreeSpaceMap {
     pub fn from_bytes(data: &[u8; FREE_SPACE_MAP_LENGTH]) -> Result<FreeSpaceMap, EmptyError> {
         let cursor = &mut &data[..];
 
-        let free_space_offsets: Vec<_> =
+        let free_space_offsets =
             repeat(MAX_FREE_SPACE_ENTRIES, SectorNumber::parse).parse_next(cursor)?;
         let partition1_offset = SectorNumber::parse.parse_next(cursor)?;
 
-        let odd_name_chars = take(5usize).parse_next(cursor)?.to_vec();
+        let odd_name_chars = take(3usize).parse_next(cursor)?.to_vec();
 
         let number_of_sectors = parse_3_byte_number.parse_next(cursor)?;
 
         let reported_sec0_checksum = any(cursor)?;
 
-        let free_space_lengths: Vec<_> =
+        let free_space_lengths =
             repeat(MAX_FREE_SPACE_ENTRIES, parse_3_byte_number).parse_next(cursor)?;
 
         let partition2_offset = SectorNumber::parse.parse_next(cursor)?;
 
-        let even_name_chars = take(5usize).parse_next(cursor)?.to_vec();
+        let even_name_chars = take(3usize).parse_next(cursor)?.to_vec();
 
-        let disk_id: [u8; DISK_ID_LENGTH] =
-            *take(2usize).parse_next(cursor)?.first_chunk().unwrap();
+        let disk_id = *take(2usize).parse_next(cursor)?.first_chunk().unwrap();
 
         let boot_options = any(cursor)?;
 
         let ptr_end_free_list = any(cursor)?;
 
         let reported_sec1_checksum = any(cursor)?;
+
+        dbg!((*cursor as *const [u8]).addr() - data as *const _ as usize);
 
         let map = FreeSpaceMap {
             free_space_offsets,
