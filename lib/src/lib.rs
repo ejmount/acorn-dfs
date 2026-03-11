@@ -4,16 +4,13 @@ pub mod new_map;
 pub mod old_map;
 
 use std::num::NonZero;
-use std::ops::Range;
 
 use thiserror::Error;
 use winnow::Bytes;
 use winnow::LocatingSlice;
 use winnow::ModalResult;
-use winnow::Parser;
 use winnow::error::ErrMode;
 use winnow::error::TreeError;
-use winnow::stream::Location;
 use winnow::stream::Stream;
 
 type InputStream<'a> = LocatingSlice<&'a Bytes>;
@@ -24,24 +21,6 @@ type ParseResult<'a, Type> = ModalResult<Type, ParseError<'a>>;
 
 #[derive(Error, Debug)]
 pub enum LoadErrors {}
-
-trait LenParser<I, O, E>: Parser<I, O, E> + Sized
-where
-    I: Stream + Location,
-{
-    fn with_len(self) -> impl Parser<I, (O, usize), E>;
-}
-
-impl<I, O, E, P> LenParser<I, O, E> for P
-where
-    P: Parser<I, O, E>,
-    I: Stream + Location,
-{
-    fn with_len(self) -> impl Parser<I, (O, usize), E> {
-        let p = self.with_span();
-        p.map(|(o, Range { start, end })| (o, end - start))
-    }
-}
 
 fn take_ls_bit<'a>(
     input: &mut BitInput<'a>,
@@ -56,7 +35,7 @@ fn take_ls_bit<'a>(
     let shaved_byte = byte >> *offset;
     let o = (shaved_byte % 2) > 0;
     *offset += 1;
-    if *offset >= 8 {
+    if *offset == 8 {
         let _ = stream.next_token();
         *offset -= 8;
     }
@@ -65,9 +44,8 @@ fn take_ls_bit<'a>(
 
 #[cfg(test)]
 mod test {
-    use winnow::{Bytes, LocatingSlice};
-
     use crate::take_ls_bit;
+    use winnow::{Bytes, LocatingSlice};
 
     #[test]
     fn test_ls_bit() {
@@ -85,5 +63,17 @@ mod test {
 
         assert!(take_ls_bit(msb).unwrap());
         assert!(take_ls_bit(msb).unwrap());
+    }
+
+    #[test]
+    fn repeat_test() {
+        let mut msb = (LocatingSlice::new(Bytes::new(&[0xAA, 0xAA])), 0);
+        let c = &mut msb;
+        let mut outs = vec![];
+        for _ in 0..16 {
+            outs.push(take_ls_bit(c).unwrap());
+        }
+        let (t, f): (Vec<_>, _) = outs.into_iter().partition(|m| *m);
+        assert_eq!(t.len(), f.len());
     }
 }
