@@ -18,6 +18,7 @@ use winnow::stream::Stream;
 
 type InputStream<'a> = LocatingSlice<&'a Bytes>;
 type BitInput<'a> = (InputStream<'a>, usize);
+type BitErr<'a> = ErrMode<TreeError<BitInput<'a>, LoadErrors>>;
 type ParseError<'a> = TreeError<InputStream<'a>, crate::LoadErrors>;
 type ParseResult<'a, Type> = ModalResult<Type, ParseError<'a>>;
 
