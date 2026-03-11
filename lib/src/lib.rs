@@ -13,14 +13,26 @@ use winnow::error::ErrMode;
 use winnow::error::TreeError;
 use winnow::stream::Stream;
 
+use crate::new_map::BitPosition;
+
 type InputStream<'a> = LocatingSlice<&'a Bytes>;
 type BitInput<'a> = (InputStream<'a>, usize);
 type BitErr<'a> = ErrMode<TreeError<BitInput<'a>, LoadErrors>>;
-type ParseError<'a> = TreeError<InputStream<'a>, crate::LoadErrors>;
+type ParseError<'a> = TreeError<InputStream<'a>, LoadErrors>;
 type ParseResult<'a, Type> = ModalResult<Type, ParseError<'a>>;
 
 #[derive(Error, Debug)]
-pub enum LoadErrors {}
+pub enum LoadErrors {
+    #[error("Free link value {0} did not point at valid fragment")]
+    InvalidFreeLink(u16),
+    #[error(
+        "Free fragment block at offset {origin:?} bits points to offset {dest_bit_offset:?} bits which does not contain a fragment"
+    )]
+    BrokenFreeChain {
+        origin: BitPosition,
+        dest_bit_offset: BitPosition,
+    },
+}
 
 fn take_ls_bit<'a>(
     input: &mut BitInput<'a>,

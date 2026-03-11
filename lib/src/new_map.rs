@@ -1,14 +1,16 @@
 // Structures defined as in http://www.riscos.com/support/developers/prm/filecore.html
 
 use std::fmt::Debug;
+use std::ops::Add;
 
-use crate::{BitErr, BitInput, InputStream, ParseError, ParseResult, take_ls_bit};
 use winnow::binary::{bits::bits, le_u8, le_u16, le_u32};
 use winnow::combinator::{seq, trace};
-use winnow::error::ErrMode;
+use winnow::error::{ErrMode, FromExternalError};
 use winnow::stream::Location;
 use winnow::token::take;
 use winnow::{Bytes, LocatingSlice, Parser};
+
+use crate::{BitErr, BitInput, InputStream, LoadErrors, ParseError, ParseResult, take_ls_bit};
 
 const STRICT_MODE: bool = true;
 
@@ -56,7 +58,7 @@ impl LeadingMapBlock {
     fn parse<'a>(includes_map: bool, input: &'_ mut InputStream<'a>) -> ParseResult<'a, Self> {
         let header = Header::parse(input)?;
         let disc_record = DiscRecord::parse(input)?;
-        let params = AllocationParsingParams::new(includes_map, &disc_record);
+        let params = AllocationParsingParams::new(includes_map, header.free_link, &disc_record);
         let allocations = AllocationBytes::make_parser(&params).parse_next(input)?;
         let remainder =
             disc_record.sector_size() - (input.current_token_start() % disc_record.sector_size());
@@ -84,7 +86,7 @@ impl MapBlock {
         disc: &DiscRecord,
     ) -> ParseResult<'a, Self> {
         let header = Header::parse(input)?;
-        let params = AllocationParsingParams::new(includes_map, disc);
+        let params = AllocationParsingParams::new(includes_map, header.free_link, disc);
 
         let allocations = AllocationBytes::make_parser(&params).parse_next(input)?;
         let remainder = disc.sector_size() - (input.current_token_start() % disc.sector_size());
@@ -188,10 +190,11 @@ struct AllocationParsingParams {
     fragment_id_length: usize,
     log_bytes_per_alloc: usize,
     sector_size: usize,
+    free_link: u16,
 }
 
 impl AllocationParsingParams {
-    fn new(zone_includes_map: bool, disk: &DiscRecord) -> AllocationParsingParams {
+    fn new(zone_includes_map: bool, free_link: u16, disk: &DiscRecord) -> AllocationParsingParams {
         let orig_zone_size = disk.zone_size_in_bytes();
         let zone_size_in_bytes = if zone_includes_map {
             orig_zone_size - (disk.num_zones as usize * disk.sector_size())
@@ -206,6 +209,7 @@ impl AllocationParsingParams {
             fragment_id_length: disk.idlen as _,
             log_bytes_per_alloc: disk.log2_bytes_per_mapbit as _,
             sector_size: disk.sector_size(),
+            free_link,
         }
     }
     fn sector_size(&self) -> usize {
@@ -221,32 +225,100 @@ impl AllocationBytes {
     fn make_parser<'a>(
         params: &AllocationParsingParams,
     ) -> impl Parser<InputStream<'a>, Self, ErrMode<ParseError<'a>>> {
-        trace("AllocationBytes", move |input: &mut InputStream<'a>| {
-            let mut bits_remaining = params.mapped_space_in_alloc_units;
+        trace(
+            "AllocationBytes",
+            move |input: &mut InputStream<'a>| -> Result<AllocationBytes, ErrMode<ParseError<'a>>> {
+                let mut bits_remaining = params.mapped_space_in_alloc_units;
 
-            bits(|input: &mut BitInput<'a>| {
-                let mut fragments = vec![];
-                while bits_remaining > 0 {
-                    let fragment_block = FragmentBlock::make_parser(params).parse_next(input)?;
-                    dbg!(bits_remaining, fragment_block.total_length + 1);
-                    bits_remaining = bits_remaining.saturating_sub(fragment_block.total_length + 1);
+                let mut fragments = bits(|input: &mut BitInput<'a>| {
+                    let mut fragments = vec![];
+                    while bits_remaining > 0 {
+                        let fragment_block =
+                            FragmentBlock::make_parser(params).parse_next(input)?;
+                        dbg!(bits_remaining, fragment_block.total_length + 1);
+                        bits_remaining =
+                            bits_remaining.saturating_sub(fragment_block.total_length + 1);
 
-                    fragments.push(fragment_block);
-                }
-                Result::<_, ErrMode<_>>::Ok(fragments)
-            })
-            .parse_next(input)
-            .map(|fragments| AllocationBytes { fragments })
-        })
+                        fragments.push(fragment_block);
+                    }
+                    Result::<_, ErrMode<_>>::Ok(fragments)
+                })
+                .parse_next(input)?;
+
+                Self::walk_free_chain(&mut fragments, params.free_link)
+                    .map_err(|e| ErrMode::from_external_error(input, e))?;
+
+                Ok(AllocationBytes { fragments })
+            },
+        )
+    }
+    fn walk_free_chain(fragments: &mut [FragmentBlock], free_link: u16) -> Result<(), LoadErrors> {
+        let free_link_from_zero = 8 + free_link; // Free link value on disc is counting from overall disk offset 1
+        let free_link_position = BitPosition(free_link_from_zero as usize);
+        let head_idx = match fragments.binary_search_by_key(&free_link_position, |f| f.position) {
+            Ok(idx) => idx,
+            Err(byte_error) => return Err(LoadErrors::InvalidFreeLink(free_link)),
+        };
+        let head = &mut fragments[head_idx];
+        head.free_space = true;
+
+        let FragmentBlock {
+            id: mut cursor_id,
+            position: mut cursor_position,
+            ..
+        } = *head;
+
+        while cursor_id != 0 {
+            let dest_bit_offset = BitPosition(cursor_id as _) + cursor_position;
+            let idx = fragments
+                .binary_search_by_key(&dest_bit_offset, |f| f.position)
+                .map_err(|_| LoadErrors::BrokenFreeChain {
+                    origin: cursor_position,
+                    dest_bit_offset,
+                })?;
+            let new_fragment = &mut fragments[idx];
+            new_fragment.free_space = true;
+            FragmentBlock {
+                id: cursor_id,
+                position: cursor_position,
+                ..
+            } = *new_fragment;
+        }
+        Ok(())
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct BitPosition(pub(crate) usize);
+impl BitPosition {
+    fn split(&self) -> (usize, usize) {
+        (self.0 / 8, self.0 % 8)
+    }
+}
+impl Add for BitPosition {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self::Output {
+        BitPosition(self.0 + rhs.0)
+    }
+}
+impl Debug for BitPosition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (bytes, bits) = self.split();
+        f.debug_struct("BitPosition")
+            .field("val", &self.0)
+            .field("bytes", &bytes)
+            .field("bits", &bits)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 struct FragmentBlock {
     id: u16, // "...the fragment id cannot be more than 15 bits long."
+    free_space: bool,
     total_length: usize,
     byte_size: usize,
-    position: (usize, usize),
+    position: BitPosition,
 }
 impl FragmentBlock {
     fn make_parser<'a>(
@@ -254,7 +326,7 @@ impl FragmentBlock {
     ) -> impl Parser<BitInput<'a>, Self, BitErr<'a>> {
         trace("FragmentBlock", move |input: &mut BitInput<'a>| {
             let idlen = params.fragment_id_length;
-            let position = (input.0.current_token_start(), input.1);
+            let position = BitPosition(8 * input.0.current_token_start() + input.1);
             let mut id = 0;
 
             for n in 0..idlen {
@@ -265,8 +337,9 @@ impl FragmentBlock {
             while !take_ls_bit(input)? {
                 total_length += 1;
             }
+            total_length += 1; // Count the terminating 1 bit
 
-            let byte_size = (1 + total_length) << params.log_bytes_per_alloc;
+            let byte_size = total_length << params.log_bytes_per_alloc;
             debug_assert!(
                 byte_size.is_multiple_of(params.sector_size()),
                 "{byte_size} % {} != 0",
@@ -275,6 +348,7 @@ impl FragmentBlock {
 
             Ok(FragmentBlock {
                 id,
+                free_space: false,
                 byte_size,
                 total_length,
                 position,
