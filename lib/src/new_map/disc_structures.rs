@@ -1,20 +1,22 @@
-// Structures defined as in http://www.riscos.com/support/developers/prm/filecore.html
+// Overall global metadata structures for NewMap formats defined in http://www.riscos.com/support/developers/prm/filecore.html
+// This does not include structures for ordinary filesystem entries such as directory and file entries
 
-use std::fmt::Debug;
-use std::ops::Add;
-
-use winnow::binary::{bits::bits, le_u8, le_u16, le_u32};
-use winnow::combinator::{seq, trace};
+use winnow::binary::bits::bits;
+use winnow::binary::{le_u8, le_u16, le_u32};
+use winnow::combinator::seq;
+use winnow::combinator::trace;
 use winnow::error::{ErrMode, FromExternalError};
 use winnow::stream::Location;
 use winnow::token::take;
-use winnow::{Bytes, LocatingSlice, Parser};
+use winnow::{Bytes, LocatingSlice, ModalResult, Parser};
 
-use crate::{BitErr, BitInput, InputStream, LoadErrors, ParseError, ParseResult, take_ls_bit};
+use crate::new_map::util::{
+    AllocationParsingParams, BitErr, BitInput, BitPosition, FixedString, InputStream, ParseError,
+    ParseResult, take_ls_bit,
+};
+use crate::new_map::{LoadErrors, STRICT_MODE};
 
-const STRICT_MODE: bool = true;
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FormatE {
     map: NewMap<0>,
 }
@@ -30,7 +32,7 @@ impl FormatE {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct NewMap<const ZONE_COUNT: usize> {
     leading_block: LeadingMapBlock,
     blocks: [MapBlock; ZONE_COUNT],
@@ -46,7 +48,7 @@ impl NewMap<0> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct LeadingMapBlock {
     header: Header,
     disc_record: DiscRecord,
@@ -59,7 +61,7 @@ impl LeadingMapBlock {
         let header = Header::parse(input)?;
         let disc_record = DiscRecord::parse(input)?;
         let params = AllocationParsingParams::new(includes_map, header.free_link, &disc_record);
-        let allocations = AllocationBytes::make_parser(&params).parse_next(input)?;
+        let allocations = AllocationBytes::parse(input, &params)?;
         let remainder =
             disc_record.sector_size() - (input.current_token_start() % disc_record.sector_size());
         let unused = Vec::from(take(remainder).parse_next(input)?);
@@ -72,7 +74,7 @@ impl LeadingMapBlock {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct MapBlock {
     header: Header,
     allocations: AllocationBytes,
@@ -88,7 +90,7 @@ impl MapBlock {
         let header = Header::parse(input)?;
         let params = AllocationParsingParams::new(includes_map, header.free_link, disc);
 
-        let allocations = AllocationBytes::make_parser(&params).parse_next(input)?;
+        let allocations = AllocationBytes::parse(input, &params)?;
         let remainder = disc.sector_size() - (input.current_token_start() % disc.sector_size());
         let unused = Vec::from(take(remainder).parse_next(input)?);
 
@@ -100,7 +102,7 @@ impl MapBlock {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Header {
     zone_check: u8,
     free_link: u16,
@@ -125,34 +127,34 @@ impl Header {
     }
 }
 
-#[derive(Debug)]
-struct DiscRecord {
-    log2_sec_size: u8,
-    secs_per_track: u8,
-    heads: u8,
-    density: u8,
-    idlen: u8,
-    log2_bytes_per_mapbit: u8,
-    skew: u8,
-    boot_options: u8,
-    low_sector: u8,
-    num_zones: u8,
-    zone_spare: u16,
-    root: u32,
-    size: u32,
-    disc_id: u16,
-    disc_name: FixedString,
-    disc_type: u32,
+#[derive(Debug, Clone)]
+pub(crate) struct DiscRecord {
+    pub(crate) log2_sec_size: u8,
+    pub(crate) secs_per_track: u8,
+    pub(crate) heads: u8,
+    pub(crate) density: u8,
+    pub(crate) idlen: u8,
+    pub(crate) log2_bytes_per_mapbit: u8,
+    pub(crate) skew: u8,
+    pub(crate) boot_options: u8,
+    pub(crate) low_sector: u8,
+    pub(crate) num_zones: u8,
+    pub(crate) zone_spare: u16,
+    pub(crate) root: u32,
+    pub(crate) size: u32,
+    pub(crate) disc_id: u16,
+    pub(crate) disc_name: FixedString,
+    pub(crate) disc_type: u32,
 }
 
 impl DiscRecord {
-    fn fragment_block_size(&self) -> usize {
+    pub(crate) fn fragment_block_size(&self) -> usize {
         self.log2_bytes_per_mapbit as _
     }
-    fn sector_size(&self) -> usize {
+    pub(crate) fn sector_size(&self) -> usize {
         2u32.pow(self.log2_sec_size as _) as _
     }
-    fn zone_size_in_bytes(&self) -> usize {
+    pub(crate) fn zone_size_in_bytes(&self) -> usize {
         (self.size / self.num_zones as u32) as _
     }
     fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
@@ -184,47 +186,15 @@ impl DiscRecord {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct AllocationParsingParams {
-    mapped_space_in_alloc_units: usize,
-    fragment_id_length: usize,
-    log_bytes_per_alloc: usize,
-    sector_size: usize,
-    free_link: u16,
-}
-
-impl AllocationParsingParams {
-    fn new(zone_includes_map: bool, free_link: u16, disk: &DiscRecord) -> AllocationParsingParams {
-        let orig_zone_size = disk.zone_size_in_bytes();
-        let zone_size_in_bytes = if zone_includes_map {
-            orig_zone_size - (disk.num_zones as usize * disk.sector_size())
-        } else {
-            orig_zone_size
-        };
-        let mapped_space_in_alloc_units =
-            zone_size_in_bytes / 2usize.pow(disk.log2_bytes_per_mapbit as u32);
-
-        AllocationParsingParams {
-            mapped_space_in_alloc_units,
-            fragment_id_length: disk.idlen as _,
-            log_bytes_per_alloc: disk.log2_bytes_per_mapbit as _,
-            sector_size: disk.sector_size(),
-            free_link,
-        }
-    }
-    fn sector_size(&self) -> usize {
-        self.sector_size
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct AllocationBytes {
     fragments: Vec<FragmentBlock>,
 }
 impl AllocationBytes {
-    fn make_parser<'a>(
+    fn parse<'a>(
+        input: &mut InputStream<'a>,
         params: &AllocationParsingParams,
-    ) -> impl Parser<InputStream<'a>, Self, ErrMode<ParseError<'a>>> {
+    ) -> ParseResult<'a, Self> {
         trace(
             "AllocationBytes",
             move |input: &mut InputStream<'a>| -> Result<AllocationBytes, ErrMode<ParseError<'a>>> {
@@ -233,9 +203,8 @@ impl AllocationBytes {
                 let mut fragments = bits(|input: &mut BitInput<'a>| {
                     let mut fragments = vec![];
                     while bits_remaining > 0 {
-                        let fragment_block =
-                            FragmentBlock::make_parser(params).parse_next(input)?;
-                        dbg!(bits_remaining, fragment_block.total_length + 1);
+                        let fragment_block = FragmentBlock::parse(input, params)?;
+
                         bits_remaining =
                             bits_remaining.saturating_sub(fragment_block.total_length + 1);
 
@@ -251,14 +220,16 @@ impl AllocationBytes {
                 Ok(AllocationBytes { fragments })
             },
         )
+        .parse_next(input)
     }
     fn walk_free_chain(fragments: &mut [FragmentBlock], free_link: u16) -> Result<(), LoadErrors> {
         let free_link_from_zero = 8 + free_link; // Free link value on disc is counting from overall disk offset 1
         let free_link_position = BitPosition(free_link_from_zero as usize);
-        let head_idx = match fragments.binary_search_by_key(&free_link_position, |f| f.position) {
-            Ok(idx) => idx,
-            Err(byte_error) => return Err(LoadErrors::InvalidFreeLink(free_link)),
-        };
+        let head_idx =
+            match fragments.binary_search_by_key(&free_link_position, FragmentBlock::position) {
+                Ok(idx) => idx,
+                Err(_) => return Err(LoadErrors::InvalidFreeLink(free_link)),
+            };
         let head = &mut fragments[head_idx];
         head.free_space = true;
 
@@ -270,12 +241,17 @@ impl AllocationBytes {
 
         while cursor_id != 0 {
             let dest_bit_offset = BitPosition(cursor_id as _) + cursor_position;
-            let idx = fragments
-                .binary_search_by_key(&dest_bit_offset, |f| f.position)
-                .map_err(|_| LoadErrors::BrokenFreeChain {
-                    origin: cursor_position,
-                    dest_bit_offset,
-                })?;
+            let idx =
+                match fragments.binary_search_by_key(&dest_bit_offset, FragmentBlock::position) {
+                    Ok(idx) => idx,
+                    Err(_) => {
+                        return Err(LoadErrors::BrokenFreeChain {
+                            origin: cursor_position,
+                            dest_bit_offset,
+                        });
+                    }
+                };
+
             let new_fragment = &mut fragments[idx];
             new_fragment.free_space = true;
             FragmentBlock {
@@ -288,30 +264,6 @@ impl AllocationBytes {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct BitPosition(pub(crate) usize);
-impl BitPosition {
-    fn split(&self) -> (usize, usize) {
-        (self.0 / 8, self.0 % 8)
-    }
-}
-impl Add for BitPosition {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self::Output {
-        BitPosition(self.0 + rhs.0)
-    }
-}
-impl Debug for BitPosition {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (bytes, bits) = self.split();
-        f.debug_struct("BitPosition")
-            .field("val", &self.0)
-            .field("bytes", &bytes)
-            .field("bits", &bits)
-            .finish()
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 struct FragmentBlock {
     id: u16, // "...the fragment id cannot be more than 15 bits long."
@@ -321,9 +273,13 @@ struct FragmentBlock {
     position: BitPosition,
 }
 impl FragmentBlock {
-    fn make_parser<'a>(
+    fn position(&self) -> BitPosition {
+        self.position
+    }
+    fn parse<'a>(
+        input: &mut BitInput<'a>,
         params: &AllocationParsingParams,
-    ) -> impl Parser<BitInput<'a>, Self, BitErr<'a>> {
+    ) -> ModalResult<Self, BitErr<'a>> {
         trace("FragmentBlock", move |input: &mut BitInput<'a>| {
             let idlen = params.fragment_id_length;
             let position = BitPosition(8 * input.0.current_token_start() + input.1);
@@ -353,25 +309,6 @@ impl FragmentBlock {
                 total_length,
                 position,
             })
-        })
-    }
-}
-
-const STRING_LEN: usize = 10;
-struct FixedString([u8; STRING_LEN]);
-
-impl Debug for FixedString {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = String::from_utf8_lossy(&self.0);
-        write!(f, "FixedString({s})")
-    }
-}
-
-impl FixedString {
-    fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
-        trace("FixedString", |input: &mut InputStream<'a>| {
-            let o = *take(STRING_LEN).parse_next(input)?.first_chunk().unwrap();
-            Ok(FixedString(o))
         })
         .parse_next(input)
     }

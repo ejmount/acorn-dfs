@@ -1,4 +1,4 @@
-use acorn_dfs::new_map::FormatE;
+use acorn_dfs::new_map::disc_structures::FormatE;
 use acorn_dfs::old_map::FreeSpaceMap;
 
 static DATA: &[u8] =
