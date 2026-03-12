@@ -11,7 +11,7 @@ use winnow::token::take;
 use winnow::{Bytes, LocatingSlice, ModalResult, Parser};
 
 use crate::new_map::util::{
-    AllocationParsingParams, BitErr, BitInput, BitPosition, FixedString, InputStream, ParseError,
+    AllocationParsingParams, BitErr, BitInput, BitPosition, DiscPosition, FixedLenString,
     ParseResult, take_ls_bit,
 };
 use crate::new_map::{LoadErrors, STRICT_MODE};
@@ -143,7 +143,7 @@ pub(crate) struct DiscRecord {
     pub(crate) root: u32,
     pub(crate) size: u32,
     pub(crate) disc_id: u16,
-    pub(crate) disc_name: FixedString,
+    pub(crate) disc_name: FixedLenString,
     pub(crate) disc_type: u32,
 }
 
@@ -176,7 +176,7 @@ impl DiscRecord {
                     root: le_u32,
                     size: le_u32,
                     disc_id: le_u16,
-                    disc_name: FixedString::parse,
+                    disc_name: FixedLenString::parse,
                     disc_type: le_u32,
                     _: take(24usize), // overall structure is 64 bytes long, tail end is reserved
                 }

@@ -96,25 +96,33 @@ impl Debug for BitPosition {
     }
 }
 
-const STRING_LEN: usize = 10;
 #[derive(Clone, Copy)]
-pub struct FixedString([u8; STRING_LEN]);
+pub struct FixedLenString<const LEN: usize = 10>([u8; LEN]);
 
-impl Debug for FixedString {
+impl<const N: usize> Debug for FixedLenString<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "FixedString({})", String::from_utf8_lossy(&self.0))
+        write!(f, "FixedLenString({:?})", String::from_utf8_lossy(&self.0))
     }
 }
 
-impl FixedString {
+impl<const LEN: usize> FixedLenString<LEN> {
     pub fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
-        trace("FixedString", |input: &mut InputStream<'a>| {
-            let o = *take(STRING_LEN).parse_next(input)?.first_chunk().unwrap();
-            Ok(FixedString(o))
-        })
+        trace(
+            format!("FixedString {LEN}"),
+            |input: &mut InputStream<'a>| {
+                let o = *take(LEN).parse_next(input)?.first_chunk().unwrap();
+                Ok(FixedLenString(o))
+            },
+        )
         .parse_next(input)
     }
+impl std::fmt::Display for FixedLenString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let lossy = String::from_utf8_lossy(&self.0);
+        write!(f, "{}", str::escape_default(&lossy))
+    }
 }
+
 #[cfg(test)]
 mod test {
     use crate::new_map::util::DiscPosition;
