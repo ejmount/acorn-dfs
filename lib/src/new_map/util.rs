@@ -16,6 +16,9 @@ pub(crate) type ParseError<'a> = TreeError<InputStream<'a>, LoadErrors>;
 pub(crate) type ParseResult<'a, Type> = ModalResult<Type, ParseError<'a>>;
 pub(crate) type BitInput<'a> = (InputStream<'a>, usize);
 pub(crate) type BitErr<'a> = TreeError<BitInput<'a>, LoadErrors>;
+
+pub(crate) type FragmentId = u16;
+
 pub(crate) fn make_input<'a>(input: &'a [u8]) -> InputStream<'a> {
     LocatingSlice::new(BStr::new(input))
 }
@@ -73,9 +76,12 @@ impl AllocationParsingParams {
     pub fn sector_size(&self) -> usize {
         self.sector_size
     }
+    pub fn bytes_per_alloc_unit(&self) -> usize {
+        2usize.pow(self.log_bytes_per_alloc as _)
+    }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BitPosition(pub(crate) usize);
 impl BitPosition {
     fn split(&self) -> (usize, usize) {

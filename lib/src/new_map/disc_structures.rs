@@ -1,6 +1,10 @@
 // Overall global metadata structures for NewMap formats defined in http://www.riscos.com/support/developers/prm/filecore.html
 // This does not include structures for ordinary filesystem entries such as directory and file entries
 
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::ops::Range;
+
 use winnow::binary::bits::bits;
 use winnow::binary::{le_u8, le_u16, le_u32};
 use winnow::combinator::seq;
@@ -10,12 +14,16 @@ use winnow::stream::Location;
 use winnow::token::take;
 use winnow::{ModalResult, Parser};
 
+use crate::new_map::util::FragmentId;
+use crate::new_map::util::InputStream;
 use crate::new_map::util::make_input;
 use crate::new_map::util::{
     AllocationParsingParams, BitErr, BitInput, BitPosition, DiscPosition, FixedLenString,
-    ParseResult, take_ls_bit,
+    ParseError, ParseResult, take_ls_bit,
 };
 use crate::new_map::{LoadErrors, STRICT_MODE};
+
+const ALLOCATION_MAP_START_IN_BITS: usize = (3 + 61) * 8;
 
 #[derive(Debug, Clone)]
 pub struct FormatE {
@@ -187,9 +195,9 @@ impl DiscRecord {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct AllocationBytes {
-    fragments: Vec<FragmentBlock>,
+    fragments: HashMap<BitPosition, FragmentBlock>,
 }
 impl AllocationBytes {
     fn parse<'a>(
@@ -202,14 +210,14 @@ impl AllocationBytes {
                 let mut bits_remaining = params.mapped_space_in_alloc_units;
 
                 let mut fragments = bits(|input: &mut BitInput<'a>| {
-                    let mut fragments = vec![];
+                    let mut fragments = HashMap::new();
                     while bits_remaining > 0 {
                         let fragment_block = FragmentBlock::parse(input, params)?;
 
                         bits_remaining =
-                            bits_remaining.saturating_sub(fragment_block.total_length + 1);
+                            bits_remaining.saturating_sub(fragment_block.map_length + 1);
 
-                        fragments.push(fragment_block);
+                        fragments.insert(fragment_block.position, fragment_block);
                     }
                     Result::<_, ErrMode<_>>::Ok(fragments)
                 })
@@ -223,38 +231,31 @@ impl AllocationBytes {
         )
         .parse_next(input)
     }
-    fn walk_free_chain(fragments: &mut [FragmentBlock], free_link: u16) -> Result<(), LoadErrors> {
+    fn walk_free_chain(
+        fragments: &mut HashMap<BitPosition, FragmentBlock>,
+        free_link: u16,
+    ) -> Result<(), LoadErrors> {
         let free_link_from_zero = 8 + free_link; // Free link value on disc is counting from overall disk offset 1
         let free_link_position = BitPosition(free_link_from_zero as usize);
-        let head_idx =
-            match fragments.binary_search_by_key(&free_link_position, FragmentBlock::position) {
-                Ok(idx) => idx,
-                Err(_) => return Err(LoadErrors::InvalidFreeLink(free_link)),
-            };
-        let head = &mut fragments[head_idx];
-        head.free_space = true;
+        let head_fragment = fragments
+            .get_mut(&free_link_position)
+            .ok_or(LoadErrors::InvalidFreeLink(free_link))?;
+        head_fragment.free_space = true;
 
         let FragmentBlock {
             id: mut cursor_id,
             position: mut cursor_position,
             ..
-        } = *head;
+        } = *head_fragment;
 
         while cursor_id != 0 {
             let dest_bit_offset = BitPosition(cursor_id as _) + cursor_position;
-            let idx =
-                match fragments.binary_search_by_key(&dest_bit_offset, FragmentBlock::position) {
-                    Ok(idx) => idx,
-                    Err(_) => {
-                        return Err(LoadErrors::BrokenFreeChain {
-                            origin: cursor_position,
-                            dest_bit_offset,
-                        });
-                    }
-                };
 
-            let new_fragment = &mut fragments[idx];
+            let new_fragment = fragments
+                .get_mut(&dest_bit_offset)
+                .ok_or(LoadErrors::InvalidFreeLink(free_link))?;
             new_fragment.free_space = true;
+
             FragmentBlock {
                 id: cursor_id,
                 position: cursor_position,
@@ -265,13 +266,25 @@ impl AllocationBytes {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+impl Debug for AllocationBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut keys: Vec<_> = self.fragments.keys().collect();
+        keys.sort_by_key(|bp| bp.0);
+        let mut f = f.debug_map();
+        for k in keys {
+            f.entry(&k.0, &self.fragments[k]);
+        }
+        f.finish()
+    }
+}
+
+#[derive(Debug, Clone)]
 struct FragmentBlock {
-    id: u16, // "...the fragment id cannot be more than 15 bits long."
+    id: FragmentId, // "...the fragment id cannot be more than 15 bits long."
     free_space: bool,
-    total_length: usize,
-    byte_size: usize,
+    map_length: usize,
     position: BitPosition,
+    disk_region: Range<usize>,
 }
 impl FragmentBlock {
     fn position(&self) -> BitPosition {
@@ -284,19 +297,23 @@ impl FragmentBlock {
         trace("FragmentBlock", move |input: &mut BitInput<'a>| {
             let idlen = params.fragment_id_length;
             let position = BitPosition(8 * input.0.current_token_start() + input.1);
-            let mut id = 0;
+            let mut id = FragmentId::default();
 
             for n in 0..idlen {
                 id |= if take_ls_bit(input)? { 1 } else { 0 } << n;
             }
 
-            let mut total_length = idlen;
+            let mut map_length = idlen;
             while !take_ls_bit(input)? {
-                total_length += 1;
+                map_length += 1;
             }
-            total_length += 1; // Count the terminating 1 bit
+            map_length += 1; // Count the terminating 1 bit
 
-            let byte_size = total_length << params.log_bytes_per_alloc;
+            let position_from_start = position.0 - ALLOCATION_MAP_START_IN_BITS;
+            let disk_start = position_from_start * params.bytes_per_alloc_unit();
+            let disk_end = disk_start + map_length * params.bytes_per_alloc_unit();
+
+            let byte_size = disk_end - disk_start;
             debug_assert!(
                 byte_size.is_multiple_of(params.sector_size()),
                 "{byte_size} % {} != 0",
@@ -306,9 +323,9 @@ impl FragmentBlock {
             Ok(FragmentBlock {
                 id,
                 free_space: false,
-                byte_size,
-                total_length,
+                map_length,
                 position,
+                disk_region: disk_start..disk_end,
             })
         })
         .parse_next(input)
