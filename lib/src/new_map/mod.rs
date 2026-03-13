@@ -2,6 +2,7 @@ const STRICT_MODE: bool = true;
 
 pub mod disc_structures;
 pub mod filesystem;
+pub mod sys_structures;
 pub mod util;
 
 use thiserror::Error;

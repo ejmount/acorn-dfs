@@ -14,10 +14,8 @@ use winnow::stream::Location;
 use winnow::token::take;
 use winnow::{ModalResult, Parser};
 
-use crate::new_map::filesystem::Directory;
 use crate::new_map::util::FragmentId;
 use crate::new_map::util::InputStream;
-use crate::new_map::util::make_input;
 use crate::new_map::util::{
     AllocationParsingParams, BitErr, BitInput, BitPosition, DiscPosition, FixedLenString,
     ParseError, ParseResult, take_ls_bit,
@@ -27,61 +25,24 @@ use crate::new_map::{LoadErrors, STRICT_MODE};
 const ALLOCATION_MAP_START_IN_BITS: usize = (3 + 61) * 8;
 
 #[derive(Debug, Clone)]
-pub struct FormatE {
-    image: Vec<u8>,
-    map: NewMap<0>,
-    root_dir: Directory,
-}
-
-impl FormatE {
-    // Entry point for creating FormatE disks
-    pub fn parse<'a>(bytes: &'a [u8]) -> ParseResult<'a, Self> {
-        let mut input = make_input(bytes);
-        let map = NewMap::parse(&mut input)?;
-
-        let dr = &map.leading_block.disc_record;
-        let root_link = map.leading_block.disc_record.root_dir;
-
-        let root_dir_region = map
-            .get_allocation(0)
-            .get_fragment(root_link.fragment())
-            .unwrap()
-            .disk_region();
-
-        let mut clone = input;
-        clone.reset_to_start();
-        trace(
-            "Jump",
-            take(root_dir_region.start + (root_link.sector_idx() - 1) as usize * dr.sector_size()),
-        )
-        .parse_next(&mut clone)?;
-
-        let root_dir = Directory::parse(&mut clone)?;
-        dbg!(&root_dir);
-
-        Ok(FormatE {
-            image: bytes.to_vec(),
-            map,
-            root_dir,
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-struct NewMap<const ZONE_COUNT: usize> {
+pub struct NewMap<const ZONE_COUNT: usize> {
     leading_block: LeadingMapBlock,
     blocks: [MapBlock; ZONE_COUNT],
 }
 
 impl NewMap<0> {
-    fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
+    pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
         let leading_block = LeadingMapBlock::parse(true, input)?;
         Ok(NewMap {
             leading_block,
             blocks: [],
         })
     }
-    fn get_allocation(&self, idx: usize) -> &AllocationBytes {
+    pub(crate) fn get_disc_record(&self) -> &DiscRecord {
+        &self.leading_block.disc_record
+    }
+
+    pub(crate) fn get_allocation(&self, idx: usize) -> &AllocationBytes {
         match idx {
             0 => &self.leading_block.allocations,
             n => &self.blocks[n - 1].allocations,
@@ -228,7 +189,7 @@ impl DiscRecord {
 }
 
 #[derive(Clone)]
-struct AllocationBytes {
+pub struct AllocationBytes {
     fragments: HashMap<BitPosition, FragmentBlock>,
 }
 impl AllocationBytes {
@@ -318,7 +279,7 @@ impl Debug for AllocationBytes {
 }
 
 #[derive(Debug, Clone)]
-struct FragmentBlock {
+pub struct FragmentBlock {
     id: FragmentId, // "...the fragment id cannot be more than 15 bits long."
     free_space: bool,
     map_length: usize,
