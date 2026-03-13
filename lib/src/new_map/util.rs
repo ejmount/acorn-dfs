@@ -3,6 +3,7 @@ use std::{fmt::Debug, ops::Add};
 use std::num::NonZero;
 
 use winnow::ModalResult;
+use winnow::binary::le_u24;
 use winnow::error::ErrMode;
 use winnow::error::TreeError;
 use winnow::stream::Stream;
@@ -105,6 +106,30 @@ impl Debug for BitPosition {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct DiscPosition(pub(crate) u32);
+impl DiscPosition {
+    pub(crate) fn parse_for_new_map<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
+        le_u24.parse_next(input).map(DiscPosition)
+    }
+    pub(crate) fn fragment(&self) -> FragmentId {
+        ((self.0 & 0x7F_FF_00) >> 8) as _
+    }
+    pub(crate) fn sector_idx(&self) -> u8 {
+        (self.0 & 0xFF) as _
+    }
+}
+
+impl Debug for DiscPosition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DiscPosition")
+            .field("val", &self.0)
+            .field("fragment", &self.fragment())
+            .field("sector no", &self.sector_idx())
+            .finish()
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct FixedLenString<const LEN: usize = 10>([u8; LEN]);
 
@@ -125,6 +150,10 @@ impl<const LEN: usize> FixedLenString<LEN> {
         )
         .parse_next(input)
     }
+    pub fn is_empty(&self) -> bool {
+        self.0[0] == 0x0
+    }
+}
 impl std::fmt::Display for FixedLenString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let lossy = String::from_utf8_lossy(&self.0);
@@ -138,7 +167,7 @@ mod test {
     use crate::new_map::util::make_input;
     use crate::new_map::util::take_ls_bit;
     use std::fmt::Write;
-    use crate::new_map::util::make_input;
+    use std::fmt::Write;
     use winnow::{Bytes, LocatingSlice};
 
     #[test]
@@ -169,5 +198,14 @@ mod test {
         }
         let (t, f): (Vec<_>, _) = outs.into_iter().partition(|m| *m);
         assert_eq!(t.len(), f.len());
+    }
+
+    #[test]
+    // Testing the bit manipulations to accurately represent the different implied parts of the structure
+    fn disc_position() {
+        let dp = DiscPosition(515);
+        let mut s = String::new();
+        let _ = write!(s, "{dp:?}").unwrap();
+        assert_eq!(s, "DiscPosition { val: 515, fragment: 2, sector no: 3 }");
     }
 }

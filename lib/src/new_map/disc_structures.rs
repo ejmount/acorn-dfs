@@ -14,6 +14,7 @@ use winnow::stream::Location;
 use winnow::token::take;
 use winnow::{ModalResult, Parser};
 
+use crate::new_map::filesystem::Directory;
 use crate::new_map::util::FragmentId;
 use crate::new_map::util::InputStream;
 use crate::new_map::util::make_input;
@@ -28,6 +29,7 @@ const ALLOCATION_MAP_START_IN_BITS: usize = (3 + 61) * 8;
 #[derive(Debug, Clone)]
 pub struct FormatE {
     map: NewMap<0>,
+    root_dir: Directory,
 }
 
 impl FormatE {
@@ -35,9 +37,33 @@ impl FormatE {
     pub fn parse<'a>(bytes: &'a [u8]) -> ParseResult<'a, Self> {
         let mut input = make_input(bytes);
         let map = NewMap::parse(&mut input)?;
-        dbg!(input.current_token_start());
 
-        Ok(FormatE { map })
+        let dr = &map.leading_block.disc_record;
+        let root_link = map.leading_block.disc_record.root_dir;
+
+        let root_dir_region = map
+            .leading_block
+            .allocations
+            .fragments
+            .iter()
+            .find(|(_, v)| v.id == root_link.fragment())
+            .unwrap()
+            .1
+            .disk_region
+            .clone();
+
+        let mut clone = input;
+        clone.reset_to_start();
+        trace(
+            "Jump",
+            take(root_dir_region.start + (root_link.sector_idx() - 1) as usize * dr.sector_size()),
+        )
+        .parse_next(&mut clone)?;
+
+        let root_dir = Directory::parse(&mut clone)?;
+        dbg!(&root_dir);
+
+        Ok(FormatE { map, root_dir })
     }
 }
 
@@ -149,7 +175,7 @@ pub(crate) struct DiscRecord {
     pub(crate) low_sector: u8,
     pub(crate) num_zones: u8,
     pub(crate) zone_spare: u16,
-    pub(crate) root: u32,
+    pub(crate) root_dir: DiscPosition,
     pub(crate) size: u32,
     pub(crate) disc_id: u16,
     pub(crate) disc_name: FixedLenString,
@@ -182,12 +208,12 @@ impl DiscRecord {
                     low_sector: le_u8,
                     num_zones: le_u8,
                     zone_spare: le_u16,
-                    root: le_u32,
+                    root_dir: le_u32.map(DiscPosition),
                     size: le_u32,
                     disc_id: le_u16,
                     disc_name: FixedLenString::parse,
                     disc_type: le_u32,
-                    _: take(24usize), // overall structure is 64 bytes long, tail end is reserved
+                    _: take(24usize), // overall structure is 60 bytes long, tail end is reserved
                 }
             },
         )

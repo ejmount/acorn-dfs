@@ -1,6 +1,7 @@
 const STRICT_MODE: bool = true;
 
 pub mod disc_structures;
+pub mod filesystem;
 pub mod util;
 
 use thiserror::Error;
@@ -17,5 +18,10 @@ pub enum LoadErrors {
     BrokenFreeChain {
         origin: BitPosition,
         dest_bit_offset: BitPosition,
+    },
+    #[error("File {filename:?} has invalid attribute byte")]
+    InvalidAttr {
+        location: BitPosition,
+        filename: String,
     },
 }

@@ -6,6 +6,8 @@ version = 4
 name = "acorn-dfs"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
+ "bitflags",
  "thiserror",
  "winnow",
 ]
@@ -16,6 +18,18 @@ version = "0.1.0"
 dependencies = [
  "acorn-dfs",
 ]
+
+[[package]]
+name = "arrayvec"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+
+[[package]]
+name = "bitflags"
+version = "2.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
 
 [[package]]
 name = "memchr"
