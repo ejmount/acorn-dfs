@@ -6,16 +6,19 @@ use winnow::ModalResult;
 use winnow::error::ErrMode;
 use winnow::error::TreeError;
 use winnow::stream::Stream;
-use winnow::{Bytes, LocatingSlice, Parser, combinator::trace, token::take};
+use winnow::{BStr, LocatingSlice, Parser, combinator::trace, token::take};
 
 use crate::new_map::LoadErrors;
 use crate::new_map::disc_structures::DiscRecord;
 
-pub(crate) type InputStream<'a> = LocatingSlice<&'a Bytes>;
+pub(crate) type InputStream<'a> = LocatingSlice<&'a BStr>;
 pub(crate) type ParseError<'a> = TreeError<InputStream<'a>, LoadErrors>;
 pub(crate) type ParseResult<'a, Type> = ModalResult<Type, ParseError<'a>>;
 pub(crate) type BitInput<'a> = (InputStream<'a>, usize);
 pub(crate) type BitErr<'a> = TreeError<BitInput<'a>, LoadErrors>;
+pub(crate) fn make_input<'a>(input: &'a [u8]) -> InputStream<'a> {
+    LocatingSlice::new(BStr::new(input))
+}
 
 pub fn take_ls_bit<'a>(input: &mut BitInput<'a>) -> ModalResult<bool, BitErr<'a>> {
     let (stream, offset) = input;
@@ -129,12 +132,13 @@ mod test {
     use crate::new_map::util::make_input;
     use crate::new_map::util::take_ls_bit;
     use std::fmt::Write;
+    use crate::new_map::util::make_input;
     use winnow::{Bytes, LocatingSlice};
 
     #[test]
     fn test_ls_bit() {
-        let mut lsb = (LocatingSlice::new(Bytes::new(&[1])), 0);
-        let mut msb = (LocatingSlice::new(Bytes::new(&[0x80, 0x01])), 0);
+        let mut lsb = (make_input(&[1]), 0);
+        let mut msb = (make_input(&[0x80, 0x01]), 0);
 
         let msb = &mut msb;
 
@@ -151,7 +155,7 @@ mod test {
 
     #[test]
     fn repeat_test() {
-        let mut msb = (LocatingSlice::new(Bytes::new(&[0xAA, 0xAA])), 0);
+        let mut msb = (make_input(&[0xAA, 0xAA]), 0);
         let c = &mut msb;
         let mut outs = vec![];
         for _ in 0..16 {

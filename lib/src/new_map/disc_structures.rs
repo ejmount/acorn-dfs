@@ -8,8 +8,9 @@ use winnow::combinator::trace;
 use winnow::error::{ErrMode, FromExternalError};
 use winnow::stream::Location;
 use winnow::token::take;
-use winnow::{Bytes, LocatingSlice, ModalResult, Parser};
+use winnow::{ModalResult, Parser};
 
+use crate::new_map::util::make_input;
 use crate::new_map::util::{
     AllocationParsingParams, BitErr, BitInput, BitPosition, DiscPosition, FixedLenString,
     ParseResult, take_ls_bit,
@@ -24,7 +25,7 @@ pub struct FormatE {
 impl FormatE {
     // Entry point for creating FormatE disks
     pub fn parse<'a>(bytes: &'a [u8]) -> ParseResult<'a, Self> {
-        let mut input = LocatingSlice::new(Bytes::new(bytes));
+        let mut input = make_input(bytes);
         let map = NewMap::parse(&mut input)?;
         dbg!(input.current_token_start());
 
