@@ -42,15 +42,10 @@ impl FormatE {
         let root_link = map.leading_block.disc_record.root_dir;
 
         let root_dir_region = map
-            .leading_block
-            .allocations
-            .fragments
-            .iter()
-            .find(|(_, v)| v.id == root_link.fragment())
+            .get_allocation(0)
+            .get_fragment(root_link.fragment())
             .unwrap()
-            .1
-            .disk_region
-            .clone();
+            .disk_region();
 
         let mut clone = input;
         clone.reset_to_start();
@@ -80,6 +75,12 @@ impl NewMap<0> {
             leading_block,
             blocks: [],
         })
+    }
+    fn get_allocation(&self, idx: usize) -> &AllocationBytes {
+        match idx {
+            0 => &self.leading_block.allocations,
+            n => &self.blocks[n - 1].allocations,
+        }
     }
 }
 
@@ -290,6 +291,12 @@ impl AllocationBytes {
         }
         Ok(())
     }
+
+    pub fn get_fragment(&self, id: FragmentId) -> Option<&FragmentBlock> {
+        self.fragments
+            .iter()
+            .find_map(|(_, f)| (f.id == id).then_some(f))
+    }
 }
 
 impl Debug for AllocationBytes {
@@ -315,6 +322,9 @@ struct FragmentBlock {
 impl FragmentBlock {
     fn position(&self) -> BitPosition {
         self.position
+    }
+    pub fn disk_region(&self) -> Range<usize> {
+        self.disk_region.clone()
     }
     fn parse<'a>(
         input: &mut BitInput<'a>,
