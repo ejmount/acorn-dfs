@@ -28,6 +28,7 @@ const ALLOCATION_MAP_START_IN_BITS: usize = (3 + 61) * 8;
 
 #[derive(Debug, Clone)]
 pub struct FormatE {
+    image: Vec<u8>,
     map: NewMap<0>,
     root_dir: Directory,
 }
@@ -58,7 +59,11 @@ impl FormatE {
         let root_dir = Directory::parse(&mut clone)?;
         dbg!(&root_dir);
 
-        Ok(FormatE { map, root_dir })
+        Ok(FormatE {
+            image: bytes.to_vec(),
+            map,
+            root_dir,
+        })
     }
 }
 
@@ -258,6 +263,7 @@ impl AllocationBytes {
         )
         .parse_next(input)
     }
+
     fn walk_free_chain(
         fragments: &mut HashMap<BitPosition, FragmentBlock>,
         free_link: u16,
