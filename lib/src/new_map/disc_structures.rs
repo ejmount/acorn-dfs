@@ -30,14 +30,7 @@ pub struct NewMap<const ZONE_COUNT: usize> {
     blocks: [MapBlock; ZONE_COUNT],
 }
 
-impl NewMap<0> {
-    pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
-        let leading_block = LeadingMapBlock::parse(true, input)?;
-        Ok(NewMap {
-            leading_block,
-            blocks: [],
-        })
-    }
+impl<const ZONES: usize> NewMap<ZONES> {
     pub(crate) fn get_disc_record(&self) -> &DiscRecord {
         &self.leading_block.disc_record
     }
@@ -47,6 +40,16 @@ impl NewMap<0> {
             0 => &self.leading_block.allocations,
             n => &self.blocks[n - 1].allocations,
         }
+    }
+}
+
+impl NewMap<0> {
+    pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
+        let leading_block = LeadingMapBlock::parse(true, input)?;
+        Ok(NewMap {
+            leading_block,
+            blocks: [],
+        })
     }
 }
 
