@@ -16,13 +16,21 @@ use crate::new_map::STRICT_MODE;
 use crate::new_map::util::BitPosition;
 use crate::new_map::util::{DiscPosition, FixedLenString, InputStream, ParseResult};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct MagicString([u8; 4]);
 impl MagicString {
     fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
         alt((b"Hugo", b"Nick"))
+            .context(LoadErrors::MagicStringFailure(
+                *input.first_chunk().unwrap(),
+            ))
             .parse_next(input)
             .map(|data| MagicString(*data.first_chunk().unwrap()))
+    }
+}
+impl std::fmt::Debug for MagicString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MagicString({})", str::from_utf8(&self.0).unwrap())
     }
 }
 
