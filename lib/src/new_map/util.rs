@@ -133,7 +133,7 @@ impl Debug for DiscPosition {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FixedLenString<const LEN: usize = 10>([u8; LEN]);
 
 impl<const N: usize> Debug for FixedLenString<N> {

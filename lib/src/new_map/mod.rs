@@ -7,9 +7,9 @@ pub mod util;
 
 use thiserror::Error;
 
-use crate::new_map::util::BitPosition;
+use crate::new_map::util::{BitPosition, DiscPosition};
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum LoadErrors {
     #[error("Free link value {0:04x} did not point at valid fragment")]
     InvalidFreeLink(u16),
@@ -24,5 +24,13 @@ pub enum LoadErrors {
     InvalidAttr {
         location: BitPosition,
         filename: String,
+        attr_value: u8,
     },
+    #[error("Could not retreieve root directory")]
+    InvalidRoot {
+        root_link: DiscPosition,
+        sector_size: usize,
+    },
+    #[error("Expected Nick or Hugo, found {}", str::escape_debug(&String::from_utf8_lossy(&*.0)))]
+    MagicStringFailure([u8; 4]),
 }
