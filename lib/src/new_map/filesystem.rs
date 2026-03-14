@@ -43,43 +43,45 @@ pub(crate) struct Directory {
 }
 impl Directory {
     pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
-        let header = seq! {
-           DirHeader {
-               start_seq_num: le_u8,
-               start_name: MagicString::parse
+        trace("Directory", |input: &mut InputStream<'a>| {
+            let header = seq! {
+               DirHeader {
+                   start_seq_num: le_u8,
+                   start_name: MagicString::parse
+                }
             }
-        }
-        .parse_next(input)?;
+            .parse_next(input)?;
 
-        let mut entries: ArrayVec<_, _> = ArrayVec::new();
-        repeat(SIZE_OF_DIRECTORY, trace("DirEntry", DirEntry::parse))
-            .fold(|| {}, |_, e| entries.push(e))
-            .parse_next(input)
-            .unwrap();
+            let mut entries: ArrayVec<_, _> = ArrayVec::new();
+            repeat(SIZE_OF_DIRECTORY, trace("DirEntry", DirEntry::parse))
+                .fold(|| {}, |_, e| entries.push(e))
+                .parse_next(input)?;
 
-        let first_null_idx = entries.iter().position(|e| e.obj_name.is_empty());
-        if let Some(first_null) = first_null_idx {
-            entries.truncate(first_null);
-        }
-
-        let tail = seq! {
-            DirTail {
-                last_mark: le_u8,
-                reserved: le_u16,
-                parent: DiscPosition::parse_for_new_map,
-                title: FixedLenString::<19>::parse,
-                name: FixedLenString::parse,
-                end_seq_num: le_u8,
-                end_name: MagicString::parse,
-                check_byte: le_u8,
+            let first_null_idx = entries.iter().position(|e| e.obj_name.is_empty());
+            if let Some(first_null) = first_null_idx {
+                entries.truncate(first_null);
             }
-        }
-        .parse_next(input)?;
-        Ok(Directory {
-            header,
-            entries,
-            tail,
+
+            let tail = seq! {
+                DirTail {
+                    last_mark: le_u8,
+                    reserved: le_u16,
+                    parent: DiscPosition::parse_for_new_map,
+                    title: FixedLenString::<19>::parse,
+                    name: FixedLenString::parse,
+                    end_seq_num: le_u8,
+                    end_name: MagicString::parse,
+                    check_byte: le_u8,
+                }
+            }
+            .parse_next(input)?;
+            Ok(Directory {
+                header,
+                entries,
+                tail,
+            })
         })
+        .parse_next(input)
     }
 }
 
