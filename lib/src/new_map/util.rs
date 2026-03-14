@@ -116,7 +116,10 @@ impl DiscPosition {
         ((self.0 & 0x7F_FF_00) >> 8) as _
     }
     pub(crate) fn sector_idx(&self) -> u8 {
-        (self.0 & 0xFF) as _
+        match self.0 & 0xFF {
+            0 => 0,
+            n => n as u8 - 1,
+        }
     }
 }
 
@@ -206,6 +209,6 @@ mod test {
         let dp = DiscPosition(515);
         let mut s = String::new();
         let _ = write!(s, "{dp:?}").unwrap();
-        assert_eq!(s, "DiscPosition { val: 515, fragment: 2, sector no: 3 }");
+        assert_eq!(s, "DiscPosition { val: 515, fragment: 2, sector no: 2 }");
     }
 }
