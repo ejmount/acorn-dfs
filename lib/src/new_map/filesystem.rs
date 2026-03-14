@@ -37,9 +37,9 @@ impl std::fmt::Debug for MagicString {
 const SIZE_OF_DIRECTORY: usize = 77;
 #[derive(Debug, Clone)]
 pub(crate) struct Directory {
-    header: DirHeader,
-    entries: ArrayVec<DirEntry, SIZE_OF_DIRECTORY>,
-    tail: DirTail,
+    pub(crate) header: DirHeader,
+    pub(crate) entries: ArrayVec<DirEntry, SIZE_OF_DIRECTORY>,
+    pub(crate) tail: DirTail,
 }
 impl Directory {
     pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
@@ -84,19 +84,19 @@ impl Directory {
 }
 
 #[derive(Debug, Clone)]
-struct DirHeader {
+pub(crate) struct DirHeader {
     start_seq_num: u8,
     start_name: MagicString,
 }
 
 #[derive(Debug, Clone)]
-struct DirEntry {
-    obj_name: FixedLenString,
-    load: u32,
-    exec: u32,
-    len: u32,
-    address: DiscPosition,
-    attrs: Attributes,
+pub(crate) struct DirEntry {
+    pub(crate) obj_name: FixedLenString,
+    pub(crate) load: u32,
+    pub(crate) exec: u32,
+    pub(crate) len: u32,
+    pub(crate) address: DiscPosition,
+    pub(crate) attrs: Attributes,
 }
 impl DirEntry {
     fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
@@ -119,7 +119,7 @@ impl DirEntry {
 }
 
 #[derive(Debug, Clone)]
-struct DirTail {
+pub(crate) struct DirTail {
     last_mark: u8,
     reserved: u16,
     parent: DiscPosition,

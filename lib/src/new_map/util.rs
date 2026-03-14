@@ -107,7 +107,7 @@ impl Debug for BitPosition {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct DiscPosition(pub(crate) u32);
+pub struct DiscPosition(pub(crate) u32);
 impl DiscPosition {
     pub(crate) fn parse_for_new_map<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
         le_u24.parse_next(input).map(DiscPosition)
