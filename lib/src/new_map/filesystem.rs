@@ -1,5 +1,4 @@
 use arrayvec::ArrayVec;
-use winnow::ModalResult;
 use winnow::Parser;
 use winnow::binary::le_u8;
 use winnow::binary::le_u16;
@@ -10,12 +9,11 @@ use winnow::combinator::seq;
 use winnow::combinator::trace;
 use winnow::error::EmptyError;
 use winnow::error::ErrMode;
-use winnow::error::FromExternalError;
-use winnow::error::TreeError;
 use winnow::stream::Location;
 
 use crate::new_map::LoadErrors;
 use crate::new_map::STRICT_MODE;
+use crate::new_map::util::BitPosition;
 use crate::new_map::util::{DiscPosition, FixedLenString, InputStream, ParseResult};
 
 #[derive(Debug, Clone, Copy)]
@@ -94,20 +92,12 @@ struct DirEntry {
 }
 impl DirEntry {
     fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
-        let obj_name = FixedLenString::parse(input)?;
-        let load = le_u32(input)?;
-        let exec = le_u32(input)?;
-        let len = le_u32(input)?;
-        let address = DiscPosition::parse_for_new_map(input)?;
-        let attrs = Attributes::parse(input).map_err(|e| {
-            e.map(|mut f: LoadErrors| {
-                let LoadErrors::InvalidAttr { location, filename } = &mut f else {
-                    unreachable!()
-                };
-                *filename = obj_name.to_string();
-                TreeError::from_external_error(input, f)
-            })
-        })?;
+        let obj_name = trace("obj_name", FixedLenString::parse).parse_next(input)?;
+        let load = trace("load", le_u32).parse_next(input)?;
+        let exec = trace("exec", le_u32).parse_next(input)?;
+        let len = trace("len", le_u32).parse_next(input)?;
+        let address = trace("address", DiscPosition::parse_for_new_map).parse_next(input)?;
+        let attrs = Attributes::parse(input, obj_name)?;
 
         Ok(DirEntry {
             obj_name,
@@ -144,20 +134,21 @@ bitflags::bitflags! {
     }
 }
 impl Attributes {
-    fn parse<'a>(input: &mut InputStream<'a>) -> ModalResult<Self, LoadErrors> {
+    fn parse<'a>(input: &mut InputStream<'a>, obj_name: FixedLenString) -> ParseResult<'a, Self> {
         if STRICT_MODE {
-            match le_u8::<_, ErrMode<EmptyError>>(input) {
-                Ok(a) => match Attributes::from_bits(a) {
-                    Some(a) => Ok(a),
-                    None => Err(ErrMode::Backtrack(LoadErrors::InvalidAttr {
-                        location: super::util::BitPosition(input.current_token_start()),
-                        filename: String::new(),
-                    })),
-                },
-                Err(e) => Err(e.map(|_| unreachable!())),
-            }
+            let pos = input.current_token_start();
+            trace("Attributes", le_u8)
+                .try_map(|a| {
+                    Attributes::from_bits(a).ok_or(LoadErrors::InvalidAttr {
+                        location: BitPosition(pos),
+                        filename: obj_name.to_string(),
+                        attr_value: a,
+                    })
+                })
+                .parse_next(input)
         } else {
-            le_u8::<_, ErrMode<EmptyError>>(input)
+            trace("Attributes", le_u8::<_, ErrMode<EmptyError>>)
+                .parse_next(input)
                 .map(Attributes::from_bits_truncate)
                 .map_err(|e| e.map(|_| unreachable!()))
         }
