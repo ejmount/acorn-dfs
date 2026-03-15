@@ -1,6 +1,10 @@
-use std::{fmt::Debug, ops::Add};
-
+use std::cmp::Ordering;
+use std::fmt::Debug;
+use std::fmt::Display;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::num::NonZero;
+use std::ops::Add;
 
 use winnow::ModalResult;
 use winnow::binary::le_u24;
@@ -134,15 +138,8 @@ impl Debug for DiscPosition {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Eq)]
 pub struct FixedLenString<const LEN: usize = 10>([u8; LEN]);
-
-impl<const N: usize> Debug for FixedLenString<N> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "FixedLenString({:?})", String::from_utf8_lossy(&self.0))
-    }
-}
-
 impl<const LEN: usize> FixedLenString<LEN> {
     pub fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
         trace(
@@ -156,22 +153,64 @@ impl<const LEN: usize> FixedLenString<LEN> {
         .parse_next(input)
     }
     pub fn is_empty(&self) -> bool {
-        self.0[0] == 0x0
+        self.len() == 0
+    }
+    pub fn len(&self) -> usize {
+        self.0
+            .iter()
+            .position(|&u| (u as char).is_control())
+            .unwrap_or(self.0.len())
+    }
+    pub fn valid_range(&self) -> &[u8] {
+        let idx = self.len();
+        &self.0[..idx]
     }
 }
-impl std::fmt::Display for FixedLenString {
+impl<const N: usize> Debug for FixedLenString<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let lossy = String::from_utf8_lossy(&self.0);
+        write!(f, "FixedLenString({:?})", String::from_utf8_lossy(&self.0))
+    }
+}
+impl Display for FixedLenString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let lossy = String::from_utf8_lossy(self.valid_range());
         write!(f, "{}", str::escape_default(&lossy))
+    }
+}
+impl<const LEN: usize> Hash for FixedLenString<LEN> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write(self.valid_range());
+    }
+}
+
+impl<const LEN: usize> PartialEq for FixedLenString<LEN> {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+
+impl<const LEN: usize> PartialOrd for FixedLenString<LEN> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<const LEN: usize> Ord for FixedLenString<LEN> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let self_valid = self.valid_range();
+        let other_valid = other.valid_range();
+
+        self_valid.cmp(other_valid)
     }
 }
 
 #[cfg(test)]
 mod test {
     use crate::new_map::util::DiscPosition;
+    use crate::new_map::util::FixedLenString;
     use crate::new_map::util::make_input;
     use crate::new_map::util::take_ls_bit;
-    use std::fmt::Write;
+    use std::cmp::Ordering;
     use std::fmt::Write;
     use winnow::{Bytes, LocatingSlice};
 
@@ -213,5 +252,21 @@ mod test {
         let mut s = String::new();
         let _ = write!(s, "{dp:?}").unwrap();
         assert_eq!(s, "DiscPosition { val: 515, fragment: 2, sector no: 2 }");
+    }
+
+    #[test]
+    fn fixed_string_properties() {
+        let empty = FixedLenString([0; 10]);
+        assert_eq!(empty.valid_range(), &[]);
+
+        let a = FixedLenString([b'a', b'b', 0]);
+        let b = FixedLenString([b'a', b'b', b'c']);
+        assert_eq!(a.cmp(&b), Ordering::Less);
+        assert_eq!(a.len(), 2);
+        assert_eq!(b.len(), 3);
+
+        let c = FixedLenString([0]);
+        let d = FixedLenString([1]);
+        assert_eq!(c, d);
     }
 }
