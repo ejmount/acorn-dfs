@@ -20,7 +20,7 @@ use crate::new_map::util::{
     AllocationParsingParams, BitErr, BitInput, BitPosition, DiscPosition, FixedLenString,
     ParseError, ParseResult, take_ls_bit,
 };
-use crate::new_map::{LoadErrors, STRICT_MODE};
+use crate::new_map::{Fault, STRICT_MODE};
 
 const ALLOCATION_MAP_START_IN_BITS: usize = (3 + 61) * 8;
 
@@ -231,12 +231,12 @@ impl AllocationBytes {
     fn walk_free_chain(
         fragments: &mut HashMap<BitPosition, FragmentBlock>,
         free_link: u16,
-    ) -> Result<(), LoadErrors> {
+    ) -> Result<(), Fault> {
         let free_link_from_zero = 8 + free_link; // Free link value on disc is counting from overall disk offset 1
         let free_link_position = BitPosition(free_link_from_zero as usize);
         let head_fragment = fragments
             .get_mut(&free_link_position)
-            .ok_or(LoadErrors::InvalidFreeLink(free_link))?;
+            .ok_or(Fault::InvalidFreeLink(free_link))?;
         head_fragment.free_space = true;
 
         let FragmentBlock {
@@ -250,7 +250,7 @@ impl AllocationBytes {
 
             let new_fragment = fragments
                 .get_mut(&dest_bit_offset)
-                .ok_or(LoadErrors::InvalidFreeLink(free_link))?;
+                .ok_or(Fault::InvalidFreeLink(free_link))?;
             new_fragment.free_space = true;
 
             FragmentBlock {

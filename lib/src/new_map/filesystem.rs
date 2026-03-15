@@ -7,13 +7,14 @@ use winnow::combinator::alt;
 use winnow::combinator::repeat;
 use winnow::combinator::seq;
 use winnow::combinator::trace;
-use winnow::error::EmptyError;
-use winnow::error::ErrMode;
 use winnow::stream::Location;
 
-use crate::new_map::LoadErrors;
+use crate::new_map::Fault;
+use crate::new_map::FaultValue;
 use crate::new_map::STRICT_MODE;
+use crate::new_map::sys_structures::Path;
 use crate::new_map::util::BitPosition;
+use crate::new_map::util::FaultableResult;
 use crate::new_map::util::{DiscPosition, FixedLenString, InputStream, ParseResult};
 
 #[derive(Clone, Copy)]
@@ -21,9 +22,7 @@ struct MagicString([u8; 4]);
 impl MagicString {
     fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
         alt((b"Hugo", b"Nick"))
-            .context(LoadErrors::MagicStringFailure(
-                *input.first_chunk().unwrap(),
-            ))
+            .context(Fault::MagicStringFailure(*input.first_chunk().unwrap()))
             .parse_next(input)
             .map(|data| MagicString(*data.first_chunk().unwrap()))
     }
@@ -42,7 +41,7 @@ pub(crate) struct Directory {
     pub(crate) tail: DirTail,
 }
 impl Directory {
-    pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
+    pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
         trace("Directory", |input: &mut InputStream<'a>| {
             let header = seq! {
                DirHeader {
@@ -52,10 +51,17 @@ impl Directory {
             }
             .parse_next(input)?;
 
-            let mut entries: ArrayVec<_, _> = ArrayVec::new();
-            repeat(SIZE_OF_DIRECTORY, trace("DirEntry", DirEntry::parse))
-                .fold(|| {}, |_, e| entries.push(e))
-                .parse_next(input)?;
+            let (mut entries, faults) =
+                repeat(SIZE_OF_DIRECTORY, trace("DirEntry", DirEntry::parse))
+                    .fold(
+                        || (ArrayVec::new(), vec![]),
+                        |(mut entries, mut faults), FaultValue(e, f)| {
+                            entries.push(e);
+                            faults.extend(f);
+                            (entries, faults)
+                        },
+                    )
+                    .parse_next(input)?;
 
             let first_null_idx = entries.iter().position(|e| e.obj_name.is_empty());
             if let Some(first_null) = first_null_idx {
@@ -75,12 +81,16 @@ impl Directory {
                 }
             }
             .parse_next(input)?;
-            Ok(Directory {
-                header,
-                entries,
-                tail,
-            })
+            Ok(FaultValue(
+                Directory {
+                    header,
+                    entries,
+                    tail,
+                },
+                faults,
+            ))
         })
+        .map(Into::into)
         .parse_next(input)
     }
 }
@@ -101,22 +111,25 @@ pub(crate) struct DirEntry {
     pub(crate) attrs: Attributes,
 }
 impl DirEntry {
-    fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
+    fn parse<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
         let obj_name = trace("obj_name", FixedLenString::parse).parse_next(input)?;
         let load = trace("load", le_u32).parse_next(input)?;
         let exec = trace("exec", le_u32).parse_next(input)?;
         let len = trace("len", le_u32).parse_next(input)?;
         let address = trace("address", DiscPosition::parse_for_new_map).parse_next(input)?;
-        let attrs = Attributes::parse(input, obj_name)?;
+        let FaultValue(attrs, fault) = Attributes::parse(input, obj_name)?;
 
-        Ok(DirEntry {
-            obj_name,
-            load,
-            exec,
-            len,
-            address,
-            attrs,
-        })
+        Ok(FaultValue(
+            DirEntry {
+                obj_name,
+                load,
+                exec,
+                len,
+                address,
+                attrs,
+            },
+            fault,
+        ))
     }
 }
 
@@ -144,23 +157,30 @@ bitflags::bitflags! {
     }
 }
 impl Attributes {
-    fn parse<'a>(input: &mut InputStream<'a>, obj_name: FixedLenString) -> ParseResult<'a, Self> {
+    fn parse<'a>(
+        input: &mut InputStream<'a>,
+        obj_name: FixedLenString,
+    ) -> FaultableResult<'a, Self> {
         if STRICT_MODE {
             let pos = input.current_token_start();
             trace("Attributes", le_u8)
-                .try_map(|a| {
-                    Attributes::from_bits(a).ok_or(LoadErrors::InvalidAttr {
-                        location: BitPosition(pos),
-                        filename: obj_name.to_string(),
-                        attr_value: a,
-                    })
+                .map(|a| match Attributes::from_bits(a) {
+                    Some(a) => a.into(),
+                    None => FaultValue(
+                        Attributes::from_bits_retain(a),
+                        vec![Fault::InvalidAttr {
+                            location: BitPosition(pos),
+                            path: Path::default(),
+                            attr_value: a,
+                        }],
+                    ),
                 })
                 .parse_next(input)
         } else {
-            trace("Attributes", le_u8::<_, ErrMode<EmptyError>>)
+            trace("Attributes", le_u8)
                 .parse_next(input)
                 .map(Attributes::from_bits_truncate)
-                .map_err(|e| e.map(|_| unreachable!()))
+                .map(Into::into)
         }
     }
 }

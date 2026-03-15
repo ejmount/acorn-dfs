@@ -9,14 +9,15 @@ use winnow::error::TreeError;
 use winnow::stream::Stream;
 use winnow::{BStr, LocatingSlice, Parser, combinator::trace, token::take};
 
-use crate::new_map::LoadErrors;
 use crate::new_map::disc_structures::DiscRecord;
+use crate::new_map::{Fault, FaultValue};
 
 pub(crate) type InputStream<'a> = LocatingSlice<&'a BStr>;
-pub(crate) type ParseError<'a> = TreeError<InputStream<'a>, LoadErrors>;
+pub(crate) type ParseError<'a> = TreeError<InputStream<'a>, Fault>;
 pub(crate) type ParseResult<'a, Type> = ModalResult<Type, ParseError<'a>>;
+pub(crate) type FaultableResult<'a, Type> = ParseResult<'a, FaultValue<Type>>;
 pub(crate) type BitInput<'a> = (InputStream<'a>, usize);
-pub(crate) type BitErr<'a> = TreeError<BitInput<'a>, LoadErrors>;
+pub(crate) type BitErr<'a> = TreeError<BitInput<'a>, Fault>;
 
 pub(crate) type FragmentId = u16;
 
@@ -151,6 +152,7 @@ impl<const LEN: usize> FixedLenString<LEN> {
                 Ok(FixedLenString(o))
             },
         )
+        .map(Into::into)
         .parse_next(input)
     }
     pub fn is_empty(&self) -> bool {
@@ -178,9 +180,10 @@ mod test {
         let mut lsb = (make_input(&[1]), 0);
         let mut msb = (make_input(&[0x80, 0x01]), 0);
 
+        let lsb = &mut lsb;
         let msb = &mut msb;
 
-        assert!(take_ls_bit(&mut lsb).unwrap());
+        assert!(take_ls_bit(lsb).unwrap());
         assert!(!take_ls_bit(msb).unwrap());
 
         for _ in 0..6 {
