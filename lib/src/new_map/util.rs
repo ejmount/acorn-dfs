@@ -141,6 +141,14 @@ impl Debug for DiscPosition {
 #[derive(Clone, Copy, Eq)]
 pub struct FixedLenString<const LEN: usize = 10>([u8; LEN]);
 impl<const LEN: usize> FixedLenString<LEN> {
+    pub fn new(input: &[u8]) -> Option<Self> {
+        if input.len() > LEN {
+            return None;
+        }
+        let mut output = [0; LEN];
+        output[..input.len()].copy_from_slice(input);
+        Some(FixedLenString(output))
+    }
     pub fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
         trace(
             format!("FixedString {LEN}"),

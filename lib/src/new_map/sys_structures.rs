@@ -1,16 +1,24 @@
-use std::{collections::BTreeMap, fmt::Debug};
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Display},
+};
 
 use winnow::{
-    error::{AddContext, TreeError},
-    stream::Stream,
+    LocatingSlice, Parser,
+    error::{AddContext, EmptyError, TreeError},
+    stream::{Offset, Stream},
+    token::{rest, take_until},
 };
 
 use crate::new_map::{
     Fault, FaultValue,
     disc_structures::NewMap,
-    filesystem::{Attributes, DirEntry, Directory},
+    filesystem::{Attributes, DirEntry, Directory, MAX_SEGMENT_LENGTH},
     util::{DiscPosition, FaultableResult, FixedLenString, InputStream, ParseResult, make_input},
 };
+
+const ROOT: u8 = b'$';
+const DIR_SEPARATOR: u8 = b'.';
 
 #[derive(Clone)]
 pub struct FormatE {
@@ -56,6 +64,44 @@ impl FormatE {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Path(Vec<FixedLenString>);
+
+impl Path {
+    #[expect(
+        const_item_mutation,
+        reason = "Constant-parser shouldn't be mutated in practice"
+    )]
+    fn from_bytes(input: &[u8]) -> Result<Path, usize> {
+        let mut input = LocatingSlice::new(input);
+        let beginning = input.checkpoint();
+        let cursor = &mut input;
+
+        ROOT.parse_next(cursor)
+            .map_err(|_: EmptyError| cursor.offset_from(&beginning))?;
+
+        let mut segments = vec![];
+
+        while !cursor.is_empty() {
+            match DIR_SEPARATOR.parse_next(cursor) {
+                Ok(_) => {}
+                Err(()) => return Err(cursor.offset_from(&beginning)),
+            }
+
+            let segment = if cursor.contains(&DIR_SEPARATOR) {
+                // Can't easily do a take_until with two possible ending points
+                take_until(.., DIR_SEPARATOR)
+                    .verify_map(FixedLenString::new)
+                    .parse_next(cursor)
+            } else {
+                rest.verify_map(FixedLenString::new).parse_next(cursor)
+            }
+            .map_err(|_: EmptyError| cursor.offset_from(&beginning))?;
+
+            segments.push(segment);
+        }
+
+        Ok(Path(segments))
+    }
+}
 
 impl std::fmt::Display for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -177,5 +223,23 @@ impl FileTree {
         cursor.next_slice(entry_region.start + offset);
 
         Directory::parse(&mut cursor)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::new_map::{sys_structures::Path, util::FixedLenString};
+
+    #[test]
+    fn parse_paths() {
+        assert_eq!(Path::from_bytes(b"$"), Ok(Path(vec![])));
+        assert_eq!(
+            Path::from_bytes(b"$.Utilities.!TeleRoute.Templates"),
+            Ok(Path(vec![
+                FixedLenString::new(b"Utilities").unwrap(),
+                FixedLenString::new(b"!TeleRoute").unwrap(),
+                FixedLenString::new(b"Templates").unwrap()
+            ]))
+        );
     }
 }

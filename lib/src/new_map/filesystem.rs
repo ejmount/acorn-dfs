@@ -17,6 +17,8 @@ use crate::new_map::util::BitPosition;
 use crate::new_map::util::FaultableResult;
 use crate::new_map::util::{DiscPosition, FixedLenString, InputStream, ParseResult};
 
+pub(crate) const MAX_SEGMENT_LENGTH: usize = 10;
+
 #[derive(Clone, Copy)]
 struct MagicString([u8; 4]);
 impl MagicString {
@@ -103,7 +105,7 @@ pub(crate) struct DirHeader {
 
 #[derive(Debug, Clone)]
 pub(crate) struct DirEntry {
-    pub(crate) obj_name: FixedLenString,
+    pub(crate) obj_name: FixedLenString<MAX_SEGMENT_LENGTH>,
     pub(crate) load: u32,
     pub(crate) exec: u32,
     pub(crate) len: u32,
@@ -139,7 +141,7 @@ pub(crate) struct DirTail {
     reserved: u16,
     parent: DiscPosition,
     title: FixedLenString<19>,
-    name: FixedLenString,
+    name: FixedLenString<MAX_SEGMENT_LENGTH>,
     end_seq_num: u8,
     end_name: MagicString,
     check_byte: u8,
