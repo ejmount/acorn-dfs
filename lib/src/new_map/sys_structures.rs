@@ -57,6 +57,16 @@ impl FormatE {
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Path(Vec<FixedLenString>);
 
+impl std::fmt::Display for Path {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "$")?;
+        for dir in &self.0 {
+            write!(f, ".{dir}")?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone)]
 enum FileObject {
     Dir(Box<Directory>),
@@ -67,6 +77,15 @@ enum FileObject {
 pub struct FileTree {
     files: std::collections::BTreeMap<Path, FileObject>,
 }
+impl Display for FileTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (k, v) in &self.files {
+            writeln!(f, "{}: {:#?}", k, v)?;
+        }
+        Ok(())
+    }
+}
+
 impl FileTree {
     fn new<'a, const ZONES: usize>(
         mut input: InputStream<'a>,
