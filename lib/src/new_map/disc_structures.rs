@@ -181,7 +181,7 @@ impl DiscRecord {
                     root_dir: le_u32.map(DiscPosition),
                     size: le_u32,
                     disc_id: le_u16,
-                    disc_name: FixedLenString::parse,
+                    disc_name: FixedLenString::parse_from_disk,
                     disc_type: le_u32,
                     _: take(24usize), // overall structure is 60 bytes long, tail end is reserved
                 }

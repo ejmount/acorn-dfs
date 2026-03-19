@@ -75,8 +75,8 @@ impl Directory {
                     last_mark: le_u8,
                     reserved: le_u16,
                     parent: DiscPosition::parse_for_new_map,
-                    title: FixedLenString::<19>::parse,
-                    name: FixedLenString::parse,
+                    title: FixedLenString::<19>::parse_from_disk,
+                    name: FixedLenString::parse_from_disk,
                     end_seq_num: le_u8,
                     end_name: MagicString::parse,
                     check_byte: le_u8,
@@ -114,7 +114,7 @@ pub(crate) struct DirEntry {
 }
 impl DirEntry {
     fn parse<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
-        let obj_name = trace("obj_name", FixedLenString::parse).parse_next(input)?;
+        let obj_name = trace("obj_name", FixedLenString::parse_from_disk).parse_next(input)?;
         let load = trace("load", le_u32).parse_next(input)?;
         let exec = trace("exec", le_u32).parse_next(input)?;
         let len = trace("len", le_u32).parse_next(input)?;

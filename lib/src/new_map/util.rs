@@ -142,14 +142,16 @@ impl Debug for DiscPosition {
 pub struct FixedLenString<const LEN: usize = 10>([u8; LEN]);
 impl<const LEN: usize> FixedLenString<LEN> {
     pub fn new(input: &[u8]) -> Option<Self> {
-        if input.len() > LEN {
+        if input.is_empty() || input.len() > LEN {
+            // Rejecting empty slices is currently load-bearing for parsing full Paths correctly
             return None;
         }
         let mut output = [0; LEN];
         output[..input.len()].copy_from_slice(input);
         Some(FixedLenString(output))
     }
-    pub fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
+    pub fn parse_from_disk<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
+        // Unlike new(), this will accept an empty string (containing an initial control character)
         trace(
             format!("FixedString {LEN}"),
             |input: &mut InputStream<'a>| {

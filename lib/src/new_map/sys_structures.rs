@@ -4,20 +4,21 @@ use std::{
 };
 
 use winnow::{
-    LocatingSlice, Parser,
+    Parser,
+    combinator::{opt, preceded, separated},
     error::{AddContext, EmptyError, TreeError},
-    stream::{Offset, Stream},
-    token::{rest, take_until},
+    stream::Stream,
+    token::take_till,
 };
 
 use crate::new_map::{
     Fault, FaultValue,
     disc_structures::NewMap,
-    filesystem::{Attributes, DirEntry, Directory, MAX_SEGMENT_LENGTH},
+    filesystem::{Attributes, DirEntry, Directory},
     util::{DiscPosition, FaultableResult, FixedLenString, InputStream, ParseResult, make_input},
 };
 
-const ROOT: u8 = b'$';
+const ROOT_SYMBOL: u8 = b'$';
 const DIR_SEPARATOR: u8 = b'.';
 
 #[derive(Clone)]
@@ -66,48 +67,28 @@ impl FormatE {
 pub struct Path(Vec<FixedLenString>);
 
 impl Path {
-    #[expect(
-        const_item_mutation,
-        reason = "Constant-parser shouldn't be mutated in practice"
-    )]
-    fn from_bytes(input: &[u8]) -> Result<Path, usize> {
-        let mut input = LocatingSlice::new(input);
-        let beginning = input.checkpoint();
-        let cursor = &mut input;
+    fn from_bytes(input: &[u8]) -> Option<Path> {
+        let segments_parser = preceded::<_, _, _, EmptyError, _, _>(
+            DIR_SEPARATOR,
+            separated(
+                1..,
+                take_till(1.., DIR_SEPARATOR).verify_map(FixedLenString::new),
+                DIR_SEPARATOR,
+            ),
+        );
+        let segments = preceded(ROOT_SYMBOL, opt(segments_parser))
+            .parse(input)
+            .ok()?;
 
-        ROOT.parse_next(cursor)
-            .map_err(|_: EmptyError| cursor.offset_from(&beginning))?;
-
-        let mut segments = vec![];
-
-        while !cursor.is_empty() {
-            match DIR_SEPARATOR.parse_next(cursor) {
-                Ok(_) => {}
-                Err(()) => return Err(cursor.offset_from(&beginning)),
-            }
-
-            let segment = if cursor.contains(&DIR_SEPARATOR) {
-                // Can't easily do a take_until with two possible ending points
-                take_until(.., DIR_SEPARATOR)
-                    .verify_map(FixedLenString::new)
-                    .parse_next(cursor)
-            } else {
-                rest.verify_map(FixedLenString::new).parse_next(cursor)
-            }
-            .map_err(|_: EmptyError| cursor.offset_from(&beginning))?;
-
-            segments.push(segment);
-        }
-
-        Ok(Path(segments))
+        Some(Path(segments.unwrap_or_default()))
     }
 }
 
 impl std::fmt::Display for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "$")?;
+        write!(f, "{}", ROOT_SYMBOL as char)?;
         for dir in &self.0 {
-            write!(f, ".{dir}")?;
+            write!(f, "{}{dir}", DIR_SEPARATOR as char)?;
         }
         Ok(())
     }
@@ -232,14 +213,24 @@ mod test {
 
     #[test]
     fn parse_paths() {
-        assert_eq!(Path::from_bytes(b"$"), Ok(Path(vec![])));
+        assert_eq!(Path::from_bytes(b"$"), Some(Path(vec![])));
         assert_eq!(
             Path::from_bytes(b"$.Utilities.!TeleRoute.Templates"),
-            Ok(Path(vec![
+            Some(Path(vec![
                 FixedLenString::new(b"Utilities").unwrap(),
                 FixedLenString::new(b"!TeleRoute").unwrap(),
                 FixedLenString::new(b"Templates").unwrap()
             ]))
+        );
+        assert_eq!(Path::from_bytes(b"$.AAAAAAAAAAAAAAAAAA"), None);
+        assert_eq!(Path::from_bytes(b"$.AAAA.BBB."), None);
+        assert_eq!(Path::from_bytes(b"$."), None);
+
+        assert_eq!(
+            Path::from_bytes(b"$.Utilities.!TeleRoute.Templates")
+                .unwrap()
+                .to_string(),
+            "$.Utilities.!TeleRoute.Templates"
         );
     }
 }
