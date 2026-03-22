@@ -1,22 +1,23 @@
-use std::{
-    collections::BTreeMap,
-    fmt::{Debug, Display},
-};
+use std::collections::BTreeMap;
+use std::fmt::{Debug, Display};
 
-use winnow::{
-    Parser,
-    combinator::{opt, preceded, separated},
-    error::{AddContext, EmptyError, TreeError},
-    stream::Stream,
-    token::take_till,
-};
+use winnow::Parser;
+use winnow::combinator::{opt, preceded, separated};
+use winnow::error::{AddContext, EmptyError, TreeError};
+use winnow::stream::Stream;
+use winnow::token::take_till;
 
-use crate::new_map::{
-    Fault, FaultValue,
-    disc_structures::NewMap,
-    filesystem::{Attributes, DirEntry, Directory},
-    util::{DiscPosition, FaultableResult, FixedLenString, InputStream, ParseResult, make_input},
+use super::disc_structures::NewMap;
+use super::filesystem::{Attributes, DirEntry, Directory};
+use super::util::{
+    DiscPosition,
+    FaultableResult,
+    FixedLenString,
+    InputStream,
+    ParseResult,
+    make_input,
 };
+use super::{Fault, FaultValue};
 
 const ROOT_SYMBOL: u8 = b'$';
 const DIR_SEPARATOR: u8 = b'.';
@@ -209,7 +210,8 @@ impl FileTree {
 
 #[cfg(test)]
 mod test {
-    use crate::new_map::{sys_structures::Path, util::FixedLenString};
+    use super::Path;
+    use crate::new_map::util::FixedLenString;
 
     #[test]
     fn parse_paths() {

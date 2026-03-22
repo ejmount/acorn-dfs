@@ -1,5 +1,3 @@
-const STRICT_MODE: bool = true;
-
 pub mod disc_structures;
 pub mod filesystem;
 pub mod sys_structures;
@@ -7,10 +5,10 @@ pub mod util;
 
 use thiserror::Error;
 
-use crate::new_map::{
-    sys_structures::Path,
-    util::{BitPosition, DiscPosition},
-};
+use self::sys_structures::Path;
+use self::util::{BitPosition, DiscPosition};
+
+const STRICT_MODE: bool = true;
 
 #[derive(Error, Debug, Clone)]
 pub enum Fault {

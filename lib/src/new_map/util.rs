@@ -1,20 +1,18 @@
 use std::cmp::Ordering;
-use std::fmt::Debug;
-use std::fmt::Display;
-use std::hash::Hash;
-use std::hash::Hasher;
+use std::fmt::{Debug, Display};
+use std::hash::{Hash, Hasher};
 use std::num::NonZero;
 use std::ops::Add;
 
-use winnow::ModalResult;
 use winnow::binary::le_u24;
-use winnow::error::ErrMode;
-use winnow::error::TreeError;
+use winnow::combinator::trace;
+use winnow::error::{ErrMode, TreeError};
 use winnow::stream::Stream;
-use winnow::{BStr, LocatingSlice, Parser, combinator::trace, token::take};
+use winnow::token::take;
+use winnow::{BStr, LocatingSlice, ModalResult, Parser};
 
-use crate::new_map::disc_structures::DiscRecord;
-use crate::new_map::{Fault, FaultValue};
+use super::disc_structures::DiscRecord;
+use super::{Fault, FaultValue};
 
 pub(crate) type InputStream<'a> = LocatingSlice<&'a BStr>;
 pub(crate) type ParseError<'a> = TreeError<InputStream<'a>, Fault>;
@@ -143,7 +141,8 @@ pub struct FixedLenString<const LEN: usize = 10>([u8; LEN]);
 impl<const LEN: usize> FixedLenString<LEN> {
     pub fn new(input: &[u8]) -> Option<Self> {
         if input.is_empty() || input.len() > LEN {
-            // Rejecting empty slices is currently load-bearing for parsing full Paths correctly
+            // Rejecting empty slices is currently load-bearing for parsing full Paths
+            // correctly
             return None;
         }
         let mut output = [0; LEN];
@@ -151,7 +150,8 @@ impl<const LEN: usize> FixedLenString<LEN> {
         Some(FixedLenString(output))
     }
     pub fn parse_from_disk<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
-        // Unlike new(), this will accept an empty string (containing an initial control character)
+        // Unlike new(), this will accept an empty string (containing an initial control
+        // character)
         trace(
             format!("FixedString {LEN}"),
             |input: &mut InputStream<'a>| {
@@ -216,13 +216,10 @@ impl<const LEN: usize> Ord for FixedLenString<LEN> {
 
 #[cfg(test)]
 mod test {
-    use crate::new_map::util::DiscPosition;
-    use crate::new_map::util::FixedLenString;
-    use crate::new_map::util::make_input;
-    use crate::new_map::util::take_ls_bit;
     use std::cmp::Ordering;
     use std::fmt::Write;
-    use winnow::{Bytes, LocatingSlice};
+
+    use super::{DiscPosition, FixedLenString, make_input, take_ls_bit};
 
     #[test]
     fn test_ls_bit() {
@@ -256,7 +253,8 @@ mod test {
     }
 
     #[test]
-    // Testing the bit manipulations to accurately represent the different implied parts of the structure
+    // Testing the bit manipulations to accurately represent the different implied
+    // parts of the structure
     fn disc_position() {
         let dp = DiscPosition(515);
         let mut s = String::new();

@@ -1,21 +1,19 @@
 use arrayvec::ArrayVec;
 use winnow::Parser;
-use winnow::binary::le_u8;
-use winnow::binary::le_u16;
-use winnow::binary::le_u32;
-use winnow::combinator::alt;
-use winnow::combinator::repeat;
-use winnow::combinator::seq;
-use winnow::combinator::trace;
+use winnow::binary::{le_u8, le_u16, le_u32};
+use winnow::combinator::{alt, repeat, seq, trace};
 use winnow::stream::Location;
 
-use crate::new_map::Fault;
-use crate::new_map::FaultValue;
-use crate::new_map::STRICT_MODE;
-use crate::new_map::sys_structures::Path;
-use crate::new_map::util::BitPosition;
-use crate::new_map::util::FaultableResult;
-use crate::new_map::util::{DiscPosition, FixedLenString, InputStream, ParseResult};
+use super::sys_structures::Path;
+use super::util::{
+    BitPosition,
+    DiscPosition,
+    FaultableResult,
+    FixedLenString,
+    InputStream,
+    ParseResult,
+};
+use super::{Fault, FaultValue, STRICT_MODE};
 
 pub(crate) const MAX_SEGMENT_LENGTH: usize = 10;
 

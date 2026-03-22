@@ -1,5 +1,6 @@
 // Overall global metadata structures for NewMap formats defined in http://www.riscos.com/support/developers/prm/filecore.html
-// This does not include structures for ordinary filesystem entries such as directory and file entries
+// This does not include structures for ordinary filesystem entries such as
+// directory and file entries
 
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -7,20 +8,26 @@ use std::ops::Range;
 
 use winnow::binary::bits::bits;
 use winnow::binary::{le_u8, le_u16, le_u32};
-use winnow::combinator::seq;
-use winnow::combinator::trace;
+use winnow::combinator::{seq, trace};
 use winnow::error::{ErrMode, FromExternalError};
 use winnow::stream::Location;
 use winnow::token::take;
 use winnow::{ModalResult, Parser};
 
-use crate::new_map::util::FragmentId;
-use crate::new_map::util::InputStream;
-use crate::new_map::util::{
-    AllocationParsingParams, BitErr, BitInput, BitPosition, DiscPosition, FixedLenString,
-    ParseError, ParseResult, take_ls_bit,
+use super::util::{
+    AllocationParsingParams,
+    BitErr,
+    BitInput,
+    BitPosition,
+    DiscPosition,
+    FixedLenString,
+    FragmentId,
+    InputStream,
+    ParseError,
+    ParseResult,
+    take_ls_bit,
 };
-use crate::new_map::{Fault, STRICT_MODE};
+use super::{Fault, STRICT_MODE};
 
 const ALLOCATION_MAP_START_IN_BITS: usize = (3 + 61) * 8;
 
@@ -58,7 +65,7 @@ struct LeadingMapBlock {
     header: Header,
     disc_record: DiscRecord,
     allocations: AllocationBytes,
-    unused: Vec<u8>,
+    _unused: Vec<u8>,
 }
 
 impl LeadingMapBlock {
@@ -69,12 +76,12 @@ impl LeadingMapBlock {
         let allocations = AllocationBytes::parse(input, &params)?;
         let remainder =
             disc_record.sector_size() - (input.current_token_start() % disc_record.sector_size());
-        let unused = Vec::from(take(remainder).parse_next(input)?);
+        let _unused = Vec::from(take(remainder).parse_next(input)?);
         Ok(LeadingMapBlock {
             header,
             disc_record,
             allocations,
-            unused,
+            _unused,
         })
     }
 }
@@ -232,7 +239,7 @@ impl AllocationBytes {
         fragments: &mut HashMap<BitPosition, FragmentBlock>,
         free_link: u16,
     ) -> Result<(), Fault> {
-        let free_link_from_zero = 8 + free_link; // Free link value on disc is counting from overall disk offset 1
+        let free_link_from_zero = 8 + free_link; // Free link value on disc is counting in bits from overall disk offset byte 0x01
         let free_link_position = BitPosition(free_link_from_zero as usize);
         let head_fragment = fragments
             .get_mut(&free_link_position)
