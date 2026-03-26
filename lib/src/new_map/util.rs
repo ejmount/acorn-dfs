@@ -1,3 +1,5 @@
+/// Types and functions that do not directly correspond to system entities, on
+/// disk or otherwise, but are still used frequently
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display};
 use std::hash::{Hash, Hasher};
@@ -14,19 +16,41 @@ use winnow::{BStr, LocatingSlice, ModalResult, Parser};
 use super::disc_structures::DiscRecord;
 use super::{Fault, FaultValue};
 
+/// The input used for parsing most structures on disk with winnow combinators.
+///
+/// `LocatingSlice` is important in this context as tracking the location within
+/// the stream of various structures is important for, e.g. offsets in
+/// [`AllocationMap`][`crate::new_map::disc_structures::AllocationMap`]
 pub(crate) type InputStream<'a> = LocatingSlice<&'a BStr>;
 pub(crate) type ParseError<'a> = TreeError<InputStream<'a>, Fault>;
+
+/// Parsing most structures produces either a valid instance of the structure or
+/// a [`ParseError`] which represents unexpected input, but [`ModalResult`] also
+/// covers the possibility that we run off the end of the stream
 pub(crate) type ParseResult<'a, Type> = ModalResult<Type, ParseError<'a>>;
+
+/// Parsing certain structures can succeed but raise non-fatal issues, encoded
+/// in the [`FaultValue`] pair
 pub(crate) type FaultableResult<'a, Type> = ParseResult<'a, FaultValue<Type>>;
+
+/// Input for parsing the
+/// [`AllocationMap`][`super::disc_structures::AllocationMap`] which is the only
+/// bit-level stream
 pub(crate) type BitInput<'a> = (InputStream<'a>, usize);
 pub(crate) type BitErr<'a> = TreeError<BitInput<'a>, Fault>;
 
+/// See [`crate::new_map::disc_structures::FragmentBlock`]. This value has
+/// dynamic length but "...the fragment id cannot be more than 15 bits long." http://www.riscos.com/support/developers/prm/filecore.html#32170
 pub(crate) type FragmentId = u16;
 
+/// Creates an InputStream for use in most other functions out of a byte-slice
 pub(crate) fn make_input<'a>(input: &'a [u8]) -> InputStream<'a> {
     LocatingSlice::new(BStr::new(input))
 }
 
+/// Parses and returns a byte stream in least-significant first order
+///
+/// This is the opposite order as [winnow::binary::bits::bool] uses.
 pub fn take_ls_bit<'a>(input: &mut BitInput<'a>) -> ModalResult<bool, BitErr<'a>> {
     let (stream, offset) = input;
     let byte = stream
@@ -45,6 +69,10 @@ pub fn take_ls_bit<'a>(input: &mut BitInput<'a>) -> ModalResult<bool, BitErr<'a>
     Ok(o)
 }
 
+/// Parsing the
+/// [`AllocationMap`][`crate::new_map::disc_structures::AllocationMap`] requires
+/// several values that are spread across different structures, so this class
+/// consolidates them.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AllocationParsingParams {
     pub(crate) mapped_space_in_alloc_units: usize,
@@ -94,6 +122,8 @@ impl AllocationParsingParams {
     }
 }
 
+/// A bit-level offset, used for tracking the position of
+/// [`crate::new_map::disc_structures::FragmentBlock`]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BitPosition(pub(crate) usize);
 impl BitPosition {
@@ -118,6 +148,21 @@ impl Debug for BitPosition {
     }
 }
 
+/// Records such as file entries in "new map" disc formats refer to positions as
+/// an "indirect disc address," containing both a fragment number (disc object
+/// ID) and a sector offset within that object. These are used because multiple
+/// filesystem objects (e.g. directory entries, file contents) can share a disc
+/// object as encoded by the allocation map
+///
+/// Specifically, the bits are laid out as:
+/// ddd00000 0fffffff ffffffff ssssssss
+///
+/// Where:
+/// - the `f` bits are the fragment ID (that is, disc object ID) referred to
+/// - the `s` bits is an offset, in whole number of sectors
+///
+///
+/// https://www.riscos.com/support/developers/prm/filecore.html#73575
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DiscPosition(pub(crate) u32);
 impl DiscPosition {
@@ -128,6 +173,8 @@ impl DiscPosition {
         ((self.0 & 0x7F_FF_00) >> 8) as _
     }
     pub(crate) fn sector_idx(&self) -> u8 {
+        // Sector IDs inside indirect addresses count from 1, except that a value of 0
+        // still refers to the beginning of the object area.
         match self.0 & 0xFF {
             0 => 0,
             n => n as u8 - 1,
@@ -145,6 +192,12 @@ impl Debug for DiscPosition {
     }
 }
 
+/// A string of bytes of fixed length, used for various types of data such as
+/// file/directory names.
+///
+/// While this data has a fixed length when stored within disk structures,
+/// semantically it is of variable length, with *any* control character
+/// representing a terminator.
 #[derive(Clone, Copy, Eq)]
 pub struct FixedLenString<const LEN: usize = 10>([u8; LEN]);
 impl<const LEN: usize> FixedLenString<LEN> {
@@ -187,6 +240,8 @@ impl<const LEN: usize> FixedLenString<LEN> {
 
         Ok(FixedLenString(output))
     }
+    /// Read a value from a disk image, which reads (and advances the stream by)
+    /// exactly `LEN` bytes,
     pub fn parse_from_disk<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
         // Unlike other methods, this will accept an empty string (containing an initial
         // control character)
@@ -209,6 +264,8 @@ impl<const LEN: usize> FixedLenString<LEN> {
             .position(|&u| (u as char).is_control())
             .unwrap_or(self.0.len())
     }
+
+    /// The segment of this string that represents valid usable data
     pub fn valid_range(&self) -> &[u8] {
         let idx = self.len();
         &self.0[..idx]

@@ -1,6 +1,7 @@
 // Overall global metadata structures for NewMap formats defined in http://www.riscos.com/support/developers/prm/filecore.html
+//
 // This does not include structures for ordinary filesystem entries such as
-// directory and file entries
+// directory records.
 
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -29,12 +30,27 @@ use super::util::{
 };
 use super::{Fault, STRICT_MODE};
 
+/// The offset of the allocation map from the beginning of the disk
+//////
+/// Used to calculate the disk-absolute ranges associated with each allocation
 const ALLOCATION_MAP_START_IN_BITS: usize = (3 + 61) * 8;
 
+/// The "new"-style file allocation map structure, used by format E and F disks.
+///
+/// Format E and F disks are conceptually divided into a number of zones, with
+/// one [`MapBlock`] per zone. However, the first Map Block is special because
+/// it contains the [`DiscRecord`], which charcteristics the geometry of the
+/// disk. Parsing the collection of `MapBlocks` is not straightforward because
+/// the exact size of a `MapBlock` is defined by the disc geometry recorded in
+/// the `DiscRecord`.
+///
+/// The `ZONE_COUNT` is *one less than* the total number of zones used by the
+/// disk, i.e. 0 for disk E, 3 for F. This is because as of 1.92, the language
+/// doesn't support doing any operations on generic parameters.
 #[derive(Debug, Clone)]
-pub struct NewMap<const ZONE_COUNT: usize> {
+pub struct NewMap<const ONE_LESS_ZONE_COUNT: usize> {
     leading_block: LeadingMapBlock,
-    blocks: [MapBlock; ZONE_COUNT],
+    blocks: [MapBlock; ONE_LESS_ZONE_COUNT],
 }
 
 impl<const ZONES: usize> NewMap<ZONES> {
@@ -51,7 +67,8 @@ impl<const ZONES: usize> NewMap<ZONES> {
 }
 
 impl NewMap<0> {
-    pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
+    /// Construct a format-E NewMap out of the given byte stream
+    pub fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
         let leading_block = LeadingMapBlock::parse(true, input)?;
         Ok(NewMap {
             leading_block,
@@ -60,6 +77,8 @@ impl NewMap<0> {
     }
 }
 
+/// The first map block is special because it contains the [`DiscRecord`] on top
+/// of everything an ordinary [`MapBlock`] contains.
 #[derive(Debug, Clone)]
 struct LeadingMapBlock {
     header: Header,
@@ -86,11 +105,20 @@ impl LeadingMapBlock {
     }
 }
 
+/// The MapBlock ordinarily contains
+/// 1. various validation checksums in thte [`Header`]
+/// 2. the beginning of the free list for this zone, also in the [`Header`]
+/// 3. a section of the allocation map
+///
+/// A MapBlock is also padded to be exactly one disk sector long, which means
+/// the DiscRecord must be accessible. For the first block, we have this earlier
+/// in the parsing step, but otherwise it must be passed in.
 #[derive(Debug, Clone)]
 struct MapBlock {
     header: Header,
     allocations: AllocationMap,
-    unused: Vec<u8>,
+    /// the remainder of the sector
+    _unused: Vec<u8>,
 }
 
 impl MapBlock {
@@ -104,19 +132,30 @@ impl MapBlock {
 
         let allocations = AllocationMap::parse(input, &params)?;
         let remainder = disc.sector_size() - (input.current_token_start() % disc.sector_size());
-        let unused = Vec::from(take(remainder).parse_next(input)?);
+        let _unused = Vec::from(take(remainder).parse_next(input)?);
 
         Ok(MapBlock {
             header,
             allocations,
-            unused,
+            _unused,
         })
     }
 }
 
+/// A prefix of a [`MapBlock`], containing various checks and the pointer to
+/// beginning of the free list
 #[derive(Debug, Clone)]
 struct Header {
     zone_check: u8,
+    /// Pointer to the first free fragment in this zone, relative to the
+    /// beginning of the same zone's allocation map
+    ///
+    /// The value that is stored on disk is described as:
+    /// offset in bits to first free space in zone, or 0 if none, with top bit
+    /// always set
+    /// https://www.chiark.greenend.org.uk/~theom/riscos/docs/ultimate/a252efmt.txt
+    ///
+    /// When actually parsed, we automatically lower the top bit
     free_link: u16,
     cross_check: u8,
 }
@@ -128,8 +167,6 @@ impl Header {
             seq! {
                 Header {
                     zone_check: le_u8,
-                    // offset in bits to first free space in zone, or 0 if none, with top bit always set
-                    // https://www.chiark.greenend.org.uk/~theom/riscos/docs/ultimate/a252efmt.txt
                     free_link: le_u16.map(|n| n & 0x7FFF),
                     cross_check: le_u8,
                 }
@@ -139,6 +176,14 @@ impl Header {
     }
 }
 
+/// Various metadata describing the overall disk geometry and "global"
+/// filesystem metadata. Some values are particularly important as they are
+/// needed to parse other structures on disk:
+/// 1. `log2_sec_size`: the sector size, stored in its base-2 log form
+/// 2. `idlen`: the length of a [`FragmentId`], in bits
+/// 3. `root_dir`: the position of the root directory record, as a byte offset
+/// 4. `size`: the total size of the disk, which then dictates how large the
+///    Allocation Map is
 #[derive(Debug, Clone)]
 pub(crate) struct DiscRecord {
     pub(crate) log2_sec_size: u8,
@@ -148,6 +193,7 @@ pub(crate) struct DiscRecord {
     pub(crate) idlen: u8,
     pub(crate) log2_bytes_per_mapbit: u8,
     pub(crate) skew: u8,
+    // TODO: Model these better
     pub(crate) boot_options: u8,
     pub(crate) low_sector: u8,
     pub(crate) num_zones: u8,
@@ -198,6 +244,35 @@ impl DiscRecord {
     }
 }
 
+/// The Allocation Map represents how the space across the disk is assigned to
+/// "fragments," and is encoded as a *bit* stream with least-significant bits
+/// read first.
+///
+/// Each allocation within the disk is represented (in disk order) by a
+/// "fragment block," which consists of,
+/// 1. a [`FragmentId`], the length of which is defined by [`DiscRecord::idlen`]
+///    and which is built from the stream "least first"
+/// 2. some number of `0` bits
+/// 3. a terminating `1`
+///
+/// The *total* bit length (both idlen and terminating `1` included) of the
+/// fragment block is the number of "allocation units" that the allocation takes
+/// up on disk. The *log* of the size (in bytes) of a single allocation unit is
+/// defined by [`DiscRecord::log2_bytes_per_mapbit`].
+///
+/// The allocation map contains no *gaps* - every bit within it assigns disk
+/// space to some fragment - so some fragments are actually representing free
+/// space. This is constructed as a linked list:
+/// - the [`Header::free_link`] value is the offset, in bits, counting from zone
+///   byte `0x1` (i.e. the free link value itself) of the first fragment that is
+///   representing free space
+/// - each fragment in the list contains an ID that is an offset, in bits, from
+///   the beginning of that fragment to the beginning of the next one
+/// - the final fragment in the free list has ID 0
+///
+/// Multiple fragment blocks may have the same fragment ID, which means they
+/// represent discontiguous chunks of the same "disc object," e.g. a
+/// file
 #[derive(Clone)]
 pub struct AllocationMap {
     fragments: HashMap<BitPosition, FragmentBlock>,
@@ -212,7 +287,9 @@ impl AllocationMap {
             move |input: &mut InputStream<'a>| -> Result<AllocationMap, ErrMode<ParseError<'a>>> {
                 let mut bits_remaining = params.mapped_space_in_alloc_units();
 
-                let mut fragments = bits(|input: &mut BitInput<'a>| {
+                // The process here is to read and digest the entire collection of fragment
+                // blocks...
+                let mut fragments = bits(|input: &mut BitInput<'a>| -> Result<_, ErrMode<_>> {
                     let mut fragments = HashMap::new();
                     while bits_remaining > 0 {
                         let fragment_block = FragmentBlock::parse(input, params)?;
@@ -222,10 +299,11 @@ impl AllocationMap {
 
                         fragments.insert(fragment_block.position, fragment_block);
                     }
-                    Result::<_, ErrMode<_>>::Ok(fragments)
+                    Ok(fragments)
                 })
                 .parse_next(input)?;
 
+                // ...and only after that, flag the ones that are part of the free list
                 if params.free_link() != 0 {
                     Self::walk_free_chain(&mut fragments, params.free_link())
                         .map_err(|e| ErrMode::from_external_error(input, e))?;
@@ -237,11 +315,19 @@ impl AllocationMap {
         .parse_next(input)
     }
 
+    /// Walks the list of free-space fragments beginning from the given
+    /// `free_link` value, modifying the appropriate fragments.
+    ///
+    /// This can fail if:
+    /// - [`Fault::InvalidFreeLink`]: the inital `free_link` does not point to a
+    ///   valid fragment
+    /// - [`Fault::BrokenFreeChain`]: one of the intermediate free fragments
+    ///   does not have a valid successor
     fn walk_free_chain(
         fragments: &mut HashMap<BitPosition, FragmentBlock>,
         free_link: u16,
     ) -> Result<(), Fault> {
-        let free_link_from_zero = 8 + free_link; // Free link value on disc is counting in bits from overall disk offset byte 0x01
+        let free_link_from_zero = 8 + free_link; // Free link value on disc is counting in bits from overall zone offset byte 0x01
         let free_link_position = BitPosition(free_link_from_zero as usize);
         let head_fragment = fragments
             .get_mut(&free_link_position)
@@ -275,7 +361,13 @@ impl AllocationMap {
         Ok(())
     }
 
+    /// Get the FragmentBlock of the given ID.
+    ///
+    /// Currently O(n) w.r.t. how many fragments there are
     pub fn get_fragment(&self, id: FragmentId) -> Option<&FragmentBlock> {
+        // TODO: Object 2, being the object which carries the map with it, is special.
+        // It is always at the beginning of the middle zone, as opposed to being
+        // at the beginning of zone 0.
         self.fragments
             .iter()
             .find_map(|(_, f)| (f.id == id).then_some(f))
@@ -294,18 +386,24 @@ impl Debug for AllocationMap {
     }
 }
 
+/// An entry in the [`AllocationMap`] representing some sort of allocation on
+/// the disk.
+///
+/// The `id` is the only data the disc explicitly records, the other fields are
+/// stored to simplify further logic and/or debugging
 #[derive(Debug, Clone)]
 pub struct FragmentBlock {
-    id: FragmentId, // "...the fragment id cannot be more than 15 bits long."
+    id: FragmentId,
+    /// Whether this block represents a region of free space
     free_space: bool,
+    /// The length, in bits this block takes up inside the `AllocationMap`
     map_length: usize,
+    /// the position within the *overall disk* this block starts at
     position: BitPosition,
+    /// the range of bytes on disk this fragment is defining
     disk_region: Range<usize>,
 }
 impl FragmentBlock {
-    fn position(&self) -> BitPosition {
-        self.position
-    }
     pub fn disk_region(&self) -> Range<usize> {
         self.disk_region.clone()
     }

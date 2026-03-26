@@ -1,3 +1,6 @@
+// Structures representing repeating features within the filesystem, including
+// directory records, file attribute flags, etc.
+
 use arrayvec::ArrayVec;
 use winnow::Parser;
 use winnow::binary::{le_u8, le_u16, le_u32};
