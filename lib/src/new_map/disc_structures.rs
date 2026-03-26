@@ -257,9 +257,13 @@ impl AllocationMap {
         while cursor_id != 0 {
             let dest_bit_offset = BitPosition(cursor_id as _) + cursor_position;
 
-            let new_fragment = fragments
-                .get_mut(&dest_bit_offset)
-                .ok_or(Fault::InvalidFreeLink(free_link))?;
+            let new_fragment =
+                fragments
+                    .get_mut(&dest_bit_offset)
+                    .ok_or(Fault::BrokenFreeChain {
+                        dest_bit_offset,
+                        origin: cursor_position,
+                    })?;
             new_fragment.free_space = true;
 
             FragmentBlock {
@@ -331,8 +335,9 @@ impl FragmentBlock {
             let byte_size = disk_end - disk_start;
             debug_assert!(
                 byte_size.is_multiple_of(params.sector_size()),
-                "{byte_size} % {} != 0",
-                params.sector_size
+                "Fragment at {:?} is not a whole sector - {byte_size} % {} != 0",
+                position,
+                params.sector_size()
             );
 
             Ok(FragmentBlock {
