@@ -42,7 +42,7 @@ impl<const ZONES: usize> NewMap<ZONES> {
         &self.leading_block.disc_record
     }
 
-    pub(crate) fn get_allocation(&self, idx: usize) -> &AllocationBytes {
+    pub(crate) fn get_allocation(&self, idx: usize) -> &AllocationMap {
         match idx {
             0 => &self.leading_block.allocations,
             n => &self.blocks[n - 1].allocations,
@@ -64,7 +64,7 @@ impl NewMap<0> {
 struct LeadingMapBlock {
     header: Header,
     disc_record: DiscRecord,
-    allocations: AllocationBytes,
+    allocations: AllocationMap,
     _unused: Vec<u8>,
 }
 
@@ -73,7 +73,7 @@ impl LeadingMapBlock {
         let header = Header::parse(input)?;
         let disc_record = DiscRecord::parse(input)?;
         let params = AllocationParsingParams::new(includes_map, header.free_link, &disc_record);
-        let allocations = AllocationBytes::parse(input, &params)?;
+        let allocations = AllocationMap::parse(input, &params)?;
         let remainder =
             disc_record.sector_size() - (input.current_token_start() % disc_record.sector_size());
         let _unused = Vec::from(take(remainder).parse_next(input)?);
@@ -89,7 +89,7 @@ impl LeadingMapBlock {
 #[derive(Debug, Clone)]
 struct MapBlock {
     header: Header,
-    allocations: AllocationBytes,
+    allocations: AllocationMap,
     unused: Vec<u8>,
 }
 
@@ -102,7 +102,7 @@ impl MapBlock {
         let header = Header::parse(input)?;
         let params = AllocationParsingParams::new(includes_map, header.free_link, disc);
 
-        let allocations = AllocationBytes::parse(input, &params)?;
+        let allocations = AllocationMap::parse(input, &params)?;
         let remainder = disc.sector_size() - (input.current_token_start() % disc.sector_size());
         let unused = Vec::from(take(remainder).parse_next(input)?);
 
@@ -199,17 +199,17 @@ impl DiscRecord {
 }
 
 #[derive(Clone)]
-pub struct AllocationBytes {
+pub struct AllocationMap {
     fragments: HashMap<BitPosition, FragmentBlock>,
 }
-impl AllocationBytes {
+impl AllocationMap {
     fn parse<'a>(
         input: &mut InputStream<'a>,
         params: &AllocationParsingParams,
     ) -> ParseResult<'a, Self> {
         trace(
             "AllocationBytes",
-            move |input: &mut InputStream<'a>| -> Result<AllocationBytes, ErrMode<ParseError<'a>>> {
+            move |input: &mut InputStream<'a>| -> Result<AllocationMap, ErrMode<ParseError<'a>>> {
                 let mut bits_remaining = params.mapped_space_in_alloc_units();
 
                 let mut fragments = bits(|input: &mut BitInput<'a>| {
@@ -231,7 +231,7 @@ impl AllocationBytes {
                         .map_err(|e| ErrMode::from_external_error(input, e))?;
                 }
 
-                Ok(AllocationBytes { fragments })
+                Ok(AllocationMap { fragments })
             },
         )
         .parse_next(input)
@@ -278,7 +278,7 @@ impl AllocationBytes {
     }
 }
 
-impl Debug for AllocationBytes {
+impl Debug for AllocationMap {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut keys: Vec<_> = self.fragments.keys().collect();
         keys.sort_by_key(|bp| bp.0);
