@@ -56,7 +56,7 @@ impl FormatE {
 
     pub fn expand_tree(&mut self) -> Result<(), TreeError<(), Fault>> {
         let input = make_input(&self.image);
-        let FaultValue(tree, faults) = FileTree::new(input, &self.map)
+        let FaultValue(tree, faults) = FileTree::new(&self.map, input)
             .map_err(|e| e.into_inner().unwrap().map_input(|_| ()))?;
         self.tree = Some(tree);
         self.faults.extend(faults);
@@ -116,8 +116,8 @@ impl Display for FileTree {
 
 impl FileTree {
     fn new<'a, const ZONES: usize>(
-        mut input: InputStream<'a>,
         map: &NewMap<ZONES>,
+        mut input: InputStream<'a>,
     ) -> FaultableResult<'a, FileTree> {
         input.reset_to_start();
 
@@ -126,8 +126,8 @@ impl FileTree {
         Ok(FaultValue(FileTree { files }, faults))
     }
 
-    fn build_tree<'a, const N: usize>(
-        map: &NewMap<N>,
+    fn build_tree<'a, const ZONES: usize>(
+        map: &NewMap<ZONES>,
         input: InputStream<'a>,
     ) -> FaultableResult<'a, BTreeMap<Path, FileObject>> {
         let dr = map.get_disc_record();
