@@ -148,19 +148,48 @@ impl Debug for DiscPosition {
 #[derive(Clone, Copy, Eq)]
 pub struct FixedLenString<const LEN: usize = 10>([u8; LEN]);
 impl<const LEN: usize> FixedLenString<LEN> {
-    pub fn new(input: &[u8]) -> Option<Self> {
-        if input.is_empty() || input.len() > LEN {
-            // Rejecting empty slices is currently load-bearing for parsing full Paths
-            // correctly
-            return None;
-        }
+    // https://www.riscos.com/support/users/firststeps/chap08.htm#L0058
+    const FORBIDDEN_CHARS: &[u8] = b"$%&*#@\"|^.:";
+
+    /// For easily constructing an FLS for testing. Similar to
+    /// `parse_from_byte_str` but ignores control character considerations.
+    #[cfg(test)]
+    pub fn from_bytes_dynamic(input: &[u8]) -> FixedLenString<LEN> {
+        let len = input.len().min(LEN);
         let mut output = [0; LEN];
-        output[..input.len()].copy_from_slice(input);
-        Some(FixedLenString(output))
+        output[..len].copy_from_slice(&input[..len]);
+        FixedLenString(output)
+    }
+
+    /// Read this value from text, such as a user-provided
+    /// [`super::sys_structures::Path`].
+    ///
+    /// This *does* stop early should a terminator be encountered, unlike
+    /// `parse_from_disk` and will reject empty components. This is
+    /// load-bearing for rejecting invalid [`super::sys_structures::Path`]
+    /// values correctly.
+    pub fn parse_from_byte_str<'a>(
+        input: &mut InputStream<'a>,
+    ) -> ModalResult<FixedLenString<LEN>, TreeError<InputStream<'a>, Fault>> {
+        let next_end_char = input
+            .offset_for(|c| c.is_ascii_control() || Self::FORBIDDEN_CHARS.contains(&c))
+            .unwrap_or(input.len());
+
+        let length = [LEN, next_end_char, input.len()].into_iter().min().unwrap();
+
+        let mut output = [0; LEN];
+        let data = trace(
+            format!("FixedLenString (dynamic, up to {length}"),
+            take(length).verify(|b: &[u8]| !b.is_empty()),
+        )
+        .parse_next(input)?;
+        output[..length].copy_from_slice(data);
+
+        Ok(FixedLenString(output))
     }
     pub fn parse_from_disk<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
-        // Unlike new(), this will accept an empty string (containing an initial control
-        // character)
+        // Unlike other methods, this will accept an empty string (containing an initial
+        // control character)
         trace(
             format!("FixedString {LEN}"),
             |input: &mut InputStream<'a>| {

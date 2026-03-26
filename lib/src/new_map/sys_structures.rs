@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
 
 use winnow::Parser;
-use winnow::combinator::{opt, preceded, separated};
-use winnow::error::{AddContext, EmptyError, TreeError};
+use winnow::combinator::{opt, preceded, separated, terminated};
+use winnow::error::{AddContext, TreeError};
 use winnow::stream::Stream;
 use winnow::token::take_till;
 
@@ -18,9 +18,6 @@ use super::util::{
     make_input,
 };
 use super::{Fault, FaultValue};
-
-const ROOT_SYMBOL: u8 = b'$';
-const DIR_SEPARATOR: u8 = b'.';
 
 #[derive(Clone)]
 pub struct FormatE {
@@ -68,18 +65,26 @@ impl FormatE {
 pub struct Path(Vec<FixedLenString>);
 
 impl Path {
+    const ROOT_SYMBOL: u8 = b'$';
+    const DIR_SEPARATOR: u8 = b'.';
+
     fn from_bytes(input: &[u8]) -> Option<Path> {
-        let segments_parser = preceded::<_, _, _, EmptyError, _, _>(
-            DIR_SEPARATOR,
+        let input = make_input(input);
+
+        let segments_parser = preceded(
+            Self::DIR_SEPARATOR,
             separated(
                 1..,
-                take_till(1.., DIR_SEPARATOR).verify_map(FixedLenString::new),
-                DIR_SEPARATOR,
+                FixedLenString::parse_from_byte_str,
+                Self::DIR_SEPARATOR,
             ),
         );
-        let segments = preceded(ROOT_SYMBOL, opt(segments_parser))
-            .parse(input)
-            .ok()?;
+        let segments = preceded(
+            Self::ROOT_SYMBOL,
+            terminated(opt(segments_parser), opt(Self::DIR_SEPARATOR)),
+        )
+        .parse(input)
+        .ok()?;
 
         Some(Path(segments.unwrap_or_default()))
     }
@@ -93,9 +98,9 @@ impl Path {
 
 impl std::fmt::Display for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", ROOT_SYMBOL as char)?;
+        write!(f, "{}", Self::ROOT_SYMBOL as char)?;
         for dir in &self.0 {
-            write!(f, "{}{dir}", DIR_SEPARATOR as char)?;
+            write!(f, "{}{dir}", Self::DIR_SEPARATOR as char)?;
         }
         Ok(())
     }
@@ -218,23 +223,29 @@ mod test {
     #[test]
     fn parse_paths() {
         assert_eq!(Path::from_bytes(b"$"), Some(Path(vec![])));
+        assert_eq!(Path::from_bytes(b"$."), Some(Path(vec![])));
         assert_eq!(
             Path::from_bytes(b"$.Utilities.!TeleRoute.Templates"),
             Some(Path(vec![
-                FixedLenString::new(b"Utilities").unwrap(),
-                FixedLenString::new(b"!TeleRoute").unwrap(),
-                FixedLenString::new(b"Templates").unwrap()
+                FixedLenString::from_bytes_dynamic(b"Utilities"),
+                FixedLenString::from_bytes_dynamic(b"!TeleRoute"),
+                FixedLenString::from_bytes_dynamic(b"Templates"),
             ]))
         );
         assert_eq!(Path::from_bytes(b"$.AAAAAAAAAAAAAAAAAA"), None);
-        assert_eq!(Path::from_bytes(b"$.AAAA.BBB."), None);
-        assert_eq!(Path::from_bytes(b"$."), None);
-
+        assert_eq!(
+            Path::from_bytes(b"$.AAAA.BBB."),
+            Some(Path(vec![
+                FixedLenString::from_bytes_dynamic(b"AAAA"),
+                FixedLenString::from_bytes_dynamic(b"BBB")
+            ]))
+        );
         assert_eq!(
             Path::from_bytes(b"$.Utilities.!TeleRoute.Templates")
                 .unwrap()
                 .to_string(),
             "$.Utilities.!TeleRoute.Templates"
         );
+        assert_eq!(Path::from_bytes(b"$.Foo\0o.Bar"), None);
     }
 }
