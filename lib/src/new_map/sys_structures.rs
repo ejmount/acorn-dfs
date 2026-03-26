@@ -83,6 +83,12 @@ impl Path {
 
         Some(Path(segments.unwrap_or_default()))
     }
+
+    pub(crate) fn join(&self, segment: FixedLenString) -> Path {
+        let mut segments = self.0.clone();
+        segments.push(segment);
+        Path(segments)
+    }
 }
 
 impl std::fmt::Display for Path {
@@ -158,12 +164,8 @@ impl FileTree {
         files.insert(Path::default(), FileObject::Dir(Box::new(root)));
 
         while let Some((path, item)) = queue.pop() {
-            //eprintln!("Found {path:?}");
             for child in &item.entries {
-                let mut new_path = path.0.clone();
-                new_path.push(child.obj_name);
-                let new_path = Path(new_path);
-                //eprintln!("Trying to find {new_path:?} at {:?}", child.address);
+                let new_path = path.join(child.obj_name);
                 if child.attrs.contains(Attributes::DIR) {
                     let FaultValue(dir, mut cur_faults) =
                         match Self::retrieve_directory(map, input, child.address, dr.sector_size())
