@@ -210,7 +210,7 @@ impl AllocationBytes {
         trace(
             "AllocationBytes",
             move |input: &mut InputStream<'a>| -> Result<AllocationBytes, ErrMode<ParseError<'a>>> {
-                let mut bits_remaining = params.mapped_space_in_alloc_units;
+                let mut bits_remaining = params.mapped_space_in_alloc_units();
 
                 let mut fragments = bits(|input: &mut BitInput<'a>| {
                     let mut fragments = HashMap::new();
@@ -226,8 +226,10 @@ impl AllocationBytes {
                 })
                 .parse_next(input)?;
 
-                Self::walk_free_chain(&mut fragments, params.free_link)
-                    .map_err(|e| ErrMode::from_external_error(input, e))?;
+                if params.free_link() != 0 {
+                    Self::walk_free_chain(&mut fragments, params.free_link())
+                        .map_err(|e| ErrMode::from_external_error(input, e))?;
+                }
 
                 Ok(AllocationBytes { fragments })
             },
@@ -308,7 +310,7 @@ impl FragmentBlock {
         params: &AllocationParsingParams,
     ) -> ModalResult<Self, BitErr<'a>> {
         trace("FragmentBlock", move |input: &mut BitInput<'a>| {
-            let idlen = params.fragment_id_length;
+            let idlen = params.fragment_id_length();
             let position = BitPosition(8 * input.0.current_token_start() + input.1);
             let mut id = FragmentId::default();
 

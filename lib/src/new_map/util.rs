@@ -83,6 +83,15 @@ impl AllocationParsingParams {
     pub fn bytes_per_alloc_unit(&self) -> usize {
         2usize.pow(self.log_bytes_per_alloc as _)
     }
+    pub fn mapped_space_in_alloc_units(&self) -> usize {
+        self.mapped_space_in_alloc_units
+    }
+    pub fn free_link(&self) -> FragmentId {
+        self.free_link
+    }
+    pub fn fragment_id_length(&self) -> usize {
+        self.fragment_id_length
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
