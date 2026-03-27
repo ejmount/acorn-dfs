@@ -196,10 +196,11 @@ impl FileTree {
                 )
             })?;
 
-        // Attach paths to invalid-attribute faults if any were raised
+        // Attach paths to faults if any were raised
         // This specifically applies to any in the root directory
         faults.iter_mut().for_each(|f| {
-            if let Fault::InvalidAttr { path, .. } = f {
+            if let Fault::InvalidAttr { path, .. } | Fault::SequenceNumberMismatch { path, .. } = f
+            {
                 *path = Path::default();
             }
         });
@@ -219,6 +220,7 @@ impl FileTree {
                         {
                             Ok(dir) => dir,
                             Err(_) => {
+                                // TODO: Raise a proper fault here
                                 eprintln!("Failed");
                                 continue;
                             }
@@ -227,7 +229,9 @@ impl FileTree {
                     files.insert(new_path.clone(), FileObject::Dir(Box::new(dir)));
                     // Attach paths to fault codes again for general files
                     cur_faults.iter_mut().for_each(|f| {
-                        if let Fault::InvalidAttr { path, .. } = f {
+                        if let Fault::InvalidAttr { path, .. }
+                        | Fault::SequenceNumberMismatch { path, .. } = f
+                        {
                             *path = new_path.clone()
                         }
                     });

@@ -21,7 +21,7 @@ pub enum Fault {
         origin: BitPosition,
         dest_bit_offset: BitPosition,
     },
-    #[error("File {path:?} has invalid attribute byte")]
+    #[error("File {path} has invalid attribute byte: {attr_value:b}")]
     InvalidAttr {
         location: BitPosition,
         path: Path,
@@ -34,6 +34,15 @@ pub enum Fault {
     },
     #[error("Expected Nick or Hugo, found {}", str::escape_debug(&String::from_utf8_lossy(&*.0)))]
     MagicStringFailure([u8; 4]),
+
+    #[error(
+        "Directory {path} began with sequence number {start_seq_num} but ended with {end_seq_num}"
+    )]
+    SequenceNumberMismatch {
+        path: Path,
+        start_seq_num: u8,
+        end_seq_num: u8,
+    },
 }
 
 #[derive(Debug, Clone)]

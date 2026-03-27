@@ -54,7 +54,7 @@ impl Directory {
             }
             .parse_next(input)?;
 
-            let (mut entries, faults) =
+            let (mut entries, mut faults) =
                 repeat(SIZE_OF_DIRECTORY, trace("DirEntry", DirEntry::parse))
                     .fold(
                         || (ArrayVec::new(), vec![]),
@@ -84,6 +84,15 @@ impl Directory {
                 }
             }
             .parse_next(input)?;
+
+            if header.start_seq_num != tail.end_seq_num {
+                faults.push(Fault::SequenceNumberMismatch {
+                    path: Path::default(),
+                    start_seq_num: header.start_seq_num,
+                    end_seq_num: tail.end_seq_num,
+                });
+            }
+
             Ok(FaultValue(
                 Directory {
                     header,
