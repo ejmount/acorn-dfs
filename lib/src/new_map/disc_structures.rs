@@ -389,11 +389,10 @@ impl Debug for AllocationMap {
 
 /// An entry in the [`AllocationMap`] representing some sort of allocation on
 /// the disk.
-///
-/// The `id` is the only data the disc explicitly records, the other fields are
-/// stored to simplify further logic and/or debugging
 #[derive(Debug, Clone)]
 pub struct FragmentBlock {
+    /// The `id` is the only data the disc explicitly records, the other fields
+    /// are stored to simplify further logic and/or debugging
     id: FragmentId,
     /// Whether this block represents a region of free space
     free_space: bool,
