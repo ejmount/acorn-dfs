@@ -12,7 +12,7 @@ const STRICT_MODE: bool = true;
 
 #[derive(Error, Debug, Clone)]
 pub enum Fault {
-    #[error("Free link value {0:04x} did not point at valid fragment")]
+    #[error("Free link value 0x{0:04x} did not point at valid fragment")]
     InvalidFreeLink(u16),
     #[error(
         "Free fragment block at offset {origin:?} bits points to offset {dest_bit_offset:?} bits which does not contain a fragment"
@@ -27,7 +27,7 @@ pub enum Fault {
         path: Path,
         attr_value: u8,
     },
-    #[error("Could not retreieve root directory")]
+    #[error("Could not retrieve root directory")]
     InvalidRoot {
         root_link: DiscPosition,
         sector_size: usize,
