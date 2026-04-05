@@ -80,6 +80,9 @@ pub(crate) struct AllocationParsingParams {
     pub(crate) log_bytes_per_alloc: usize,
     pub(crate) sector_size: usize,
     pub(crate) free_link: u16,
+    pub(crate) zone_count: usize,
+    pub(crate) total_disk_size: usize,
+    pub(crate) ids_per_zone: usize,
 }
 
 impl AllocationParsingParams {
@@ -97,14 +100,27 @@ impl AllocationParsingParams {
         let mapped_space_in_alloc_units =
             zone_size_in_bytes / 2usize.pow(disk.log2_bytes_per_mapbit as u32);
 
+        let ids_per_zone = disk.ids_per_zone();
+
         AllocationParsingParams {
             mapped_space_in_alloc_units,
             fragment_id_length: disk.idlen as _,
             log_bytes_per_alloc: disk.log2_bytes_per_mapbit as _,
             sector_size: disk.sector_size_in_bytes(),
             free_link,
+            total_disk_size: disk.size as _,
+            zone_count: disk.num_zones as _,
+            ids_per_zone,
         }
     }
+    fn zone_size(&self) -> usize {
+        self.total_disk_size / self.zone_count
+    }
+    pub(crate) fn search_starting_point(&self, f: FragmentId) -> usize {
+        let zone_idx = f as usize / self.ids_per_zone;
+        zone_idx * self.zone_size()
+    }
+
     pub fn sector_size(&self) -> usize {
         self.sector_size
     }

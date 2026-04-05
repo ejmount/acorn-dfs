@@ -216,6 +216,10 @@ impl DiscRecord {
     pub(crate) fn zone_size_in_bytes(&self) -> usize {
         (self.size / self.num_zones as u32) as _
     }
+    pub(crate) fn ids_per_zone(&self) -> usize {
+        ((1 << (self.log2_sec_size as usize + 3)) - self.zone_spare as usize)
+            / (self.idlen as usize + 1)
+    }
     fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
         trace(
             "DiscRecord",
@@ -277,6 +281,7 @@ impl DiscRecord {
 #[derive(Clone)]
 pub struct AllocationMap {
     fragments: HashMap<BitPosition, FragmentBlock>,
+    object_regions: HashMap<FragmentId, Vec<Range<usize>>>,
 }
 impl AllocationMap {
     fn parse<'a>(
@@ -310,7 +315,12 @@ impl AllocationMap {
                         .map_err(|e| ErrMode::from_external_error(input, e))?;
                 }
 
-                Ok(AllocationMap { fragments })
+                let fragment_regions = Self::build_fragment_map(&fragments, params);
+
+                Ok(AllocationMap {
+                    fragments,
+                    object_regions: fragment_regions,
+                })
             },
         )
         .parse_next(input)
@@ -362,6 +372,34 @@ impl AllocationMap {
         Ok(())
     }
 
+    /// Build the map of which disc regions belong to which disc objects, in the
+    /// proper order
+    fn build_fragment_map(
+        blocks: &HashMap<BitPosition, FragmentBlock>,
+        params: &AllocationParsingParams,
+    ) -> HashMap<FragmentId, Vec<Range<usize>>> {
+        let mut fragment_regions: HashMap<_, Vec<_>> = HashMap::new();
+        for block in blocks.values() {
+            fragment_regions
+                .entry(block.id)
+                .or_default()
+                .push(block.disk_region());
+        }
+        for (&fid, v) in &mut fragment_regions {
+            // The regions need to be put in the order that results from searching for
+            // regions belonging to disc object F starting from the zone
+            // numbered `(F / ids per zone)` and wrapping around the end of the
+            // disc
+            //
+            // https://www.riscos.com/support/developers/prm/filecore.html#32170
+            v.sort_by_key(|id| {
+                let start = params.search_starting_point(fid);
+                id.start.wrapping_sub(start) % params.total_disk_size
+            });
+        }
+        fragment_regions
+    }
+
     /// Get the FragmentBlock of the given ID.
     ///
     /// Currently O(n) w.r.t. how many fragments there are
@@ -377,12 +415,15 @@ impl AllocationMap {
 
 impl Debug for AllocationMap {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut keys: Vec<_> = self.fragments.keys().collect();
-        keys.sort_by_key(|bp| bp.0);
-        let mut f = f.debug_map();
-        for k in keys {
-            f.entry(&k.0, &self.fragments[k]);
-        }
+        let mut f = f.debug_struct("AllocationMap");
+
+        let mut blocks: Vec<_> = self.fragments.iter().collect();
+        blocks.sort_by_key(|bp| bp.0);
+        f.field("blocks", &blocks);
+
+        let mut fragment_regions: Vec<_> = self.object_regions.iter().collect();
+        fragment_regions.sort_by_key(|(k, _)| **k);
+        f.field("fragment_regions", &fragment_regions);
         f.finish()
     }
 }
