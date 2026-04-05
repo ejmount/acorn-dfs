@@ -90,7 +90,7 @@ impl AllocationParsingParams {
     ) -> AllocationParsingParams {
         let orig_zone_size = disk.zone_size_in_bytes();
         let zone_size_in_bytes = if zone_includes_map {
-            orig_zone_size - (disk.num_zones as usize * disk.sector_size())
+            orig_zone_size - (disk.num_zones as usize * disk.sector_size_in_bytes())
         } else {
             orig_zone_size
         };
@@ -101,7 +101,7 @@ impl AllocationParsingParams {
             mapped_space_in_alloc_units,
             fragment_id_length: disk.idlen as _,
             log_bytes_per_alloc: disk.log2_bytes_per_mapbit as _,
-            sector_size: disk.sector_size(),
+            sector_size: disk.sector_size_in_bytes(),
             free_link,
         }
     }

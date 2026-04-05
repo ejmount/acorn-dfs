@@ -93,8 +93,8 @@ impl LeadingMapBlock {
         let disc_record = DiscRecord::parse(input)?;
         let params = AllocationParsingParams::new(includes_map, header.free_link, &disc_record);
         let allocations = AllocationMap::parse(input, &params)?;
-        let remainder =
-            disc_record.sector_size() - (input.current_token_start() % disc_record.sector_size());
+        let remainder = disc_record.sector_size_in_bytes()
+            - (input.current_token_start() % disc_record.sector_size_in_bytes());
         let _unused = Vec::from(take(remainder).parse_next(input)?);
         Ok(LeadingMapBlock {
             header,
@@ -131,7 +131,8 @@ impl MapBlock {
         let params = AllocationParsingParams::new(includes_map, header.free_link, disc);
 
         let allocations = AllocationMap::parse(input, &params)?;
-        let remainder = disc.sector_size() - (input.current_token_start() % disc.sector_size());
+        let remainder = disc.sector_size_in_bytes()
+            - (input.current_token_start() % disc.sector_size_in_bytes());
         let _unused = Vec::from(take(remainder).parse_next(input)?);
 
         Ok(MapBlock {
@@ -209,7 +210,7 @@ impl DiscRecord {
     pub(crate) fn fragment_block_size(&self) -> usize {
         self.log2_bytes_per_mapbit as _
     }
-    pub(crate) fn sector_size(&self) -> usize {
+    pub(crate) fn sector_size_in_bytes(&self) -> usize {
         2u32.pow(self.log2_sec_size as _) as _
     }
     pub(crate) fn zone_size_in_bytes(&self) -> usize {

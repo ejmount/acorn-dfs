@@ -184,17 +184,19 @@ impl FileTree {
         let dr = map.get_disc_record();
         let root_link = dr.root_dir;
         let FaultValue(root, mut faults) =
-            Self::retrieve_directory(map, input, root_link, dr.sector_size()).map_err(|e| {
-                let c = input.checkpoint();
-                e.add_context(
-                    &input,
-                    &c,
-                    Fault::InvalidRoot {
-                        root_link,
-                        sector_size: dr.sector_size(),
-                    },
-                )
-            })?;
+            Self::retrieve_directory(map, input, root_link, dr.sector_size_in_bytes()).map_err(
+                |e| {
+                    let c = input.checkpoint();
+                    e.add_context(
+                        &input,
+                        &c,
+                        Fault::InvalidRoot {
+                            root_link,
+                            sector_size: dr.sector_size_in_bytes(),
+                        },
+                    )
+                },
+            )?;
 
         // Attach paths to faults if any were raised
         // This specifically applies to any in the root directory
@@ -215,16 +217,19 @@ impl FileTree {
             for child in &item.entries {
                 let new_path = path.join(child.obj_name);
                 if child.attrs.contains(Attributes::DIR) {
-                    let FaultValue(dir, mut cur_faults) =
-                        match Self::retrieve_directory(map, input, child.address, dr.sector_size())
-                        {
-                            Ok(dir) => dir,
-                            Err(_) => {
-                                // TODO: Raise a proper fault here
-                                eprintln!("Failed");
-                                continue;
-                            }
-                        };
+                    let FaultValue(dir, mut cur_faults) = match Self::retrieve_directory(
+                        map,
+                        input,
+                        child.address,
+                        dr.sector_size_in_bytes(),
+                    ) {
+                        Ok(dir) => dir,
+                        Err(_) => {
+                            // TODO: Raise a proper fault here
+                            eprintln!("Failed");
+                            continue;
+                        }
+                    };
                     queue.push((new_path.clone(), dir.clone()));
                     files.insert(new_path.clone(), FileObject::Dir(Box::new(dir)));
                     // Attach paths to fault codes again for general files
