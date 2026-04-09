@@ -5,7 +5,7 @@ pub mod util;
 
 use thiserror::Error;
 
-use self::sys_structures::Path;
+pub use self::sys_structures::Path;
 use self::util::{BitPosition, DiscPosition};
 
 const STRICT_MODE: bool = true;

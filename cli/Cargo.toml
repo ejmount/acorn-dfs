@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 acorn-dfs = { version = "0.1.0", path = "../lib" }
+clap = { version = "4.6.0", features = ["derive"] }

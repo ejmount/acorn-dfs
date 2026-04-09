@@ -76,6 +76,17 @@ impl FormatE {
         self.faults.extend(faults);
         Ok(())
     }
+
+    pub fn get_file(&self, path: &Path) -> Option<Vec<u8>> {
+        let Some(tree) = &self.tree else { return None };
+        let Some(fileobject) = tree.files.get(path) else {
+            return None;
+        };
+        match fileobject {
+            FileObject::Dir(directory) => return None,
+            FileObject::File(dir_entry) => unimplemented!(),
+        }
+    }
 }
 
 /// Represents a Path on the ADFS filesystem.
@@ -134,6 +145,12 @@ impl std::fmt::Display for Path {
             write!(f, "{}{dir}", Self::DIR_SEPARATOR as char)?;
         }
         Ok(())
+    }
+}
+
+impl From<&'_ str> for Path {
+    fn from(value: &'_ str) -> Self {
+        Path::from_bytes(value.as_bytes()).expect("Could not interpret {value} as ADFS Path")
     }
 }
 
