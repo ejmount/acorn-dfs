@@ -43,17 +43,14 @@ const ALLOCATION_MAP_START_IN_BITS: usize = (3 + 61) * 8;
 /// disk. Parsing the collection of `MapBlocks` is not straightforward because
 /// the exact size of a `MapBlock` is defined by the disc geometry recorded in
 /// the `DiscRecord`.
-///
-/// The `ZONE_COUNT` is *one less than* the total number of zones used by the
-/// disk, i.e. 0 for disk E, 3 for F. This is because as of 1.92, the language
-/// doesn't support doing any operations on generic parameters.
 #[derive(Debug, Clone)]
-pub struct NewMap<const ONE_LESS_ZONE_COUNT: usize> {
+pub struct NewMap {
     leading_block: LeadingMapBlock,
-    blocks: [MapBlock; ONE_LESS_ZONE_COUNT],
+    /// Trailing blocks. This may be empty if there is only one zone.
+    blocks: Vec<MapBlock>,
 }
 
-impl<const ZONES: usize> NewMap<ZONES> {
+impl NewMap {
     pub(crate) fn get_disc_record(&self) -> &DiscRecord {
         &self.leading_block.disc_record
     }
@@ -64,15 +61,12 @@ impl<const ZONES: usize> NewMap<ZONES> {
             n => &self.blocks[n - 1].allocations,
         }
     }
-}
-
-impl NewMap<0> {
     /// Construct a format-E NewMap out of the given byte stream
-    pub fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
+    pub fn parse_format_e<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
         let leading_block = LeadingMapBlock::parse(true, input)?;
         Ok(NewMap {
             leading_block,
-            blocks: [],
+            blocks: vec![],
         })
     }
 }

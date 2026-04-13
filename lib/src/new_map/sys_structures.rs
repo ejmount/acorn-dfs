@@ -32,7 +32,7 @@ pub struct FormatE {
     /// The raw disk bytes.
     pub image: Vec<u8>,
     /// The parsed "Map" structure, effectively the superblock
-    pub map: NewMap<0>,
+    pub map: NewMap,
     /// A summarised copy of the filesystem tree - this does not directly
     /// correspond to any disk contents.
     pub tree: Option<FileTree>,
@@ -56,7 +56,7 @@ impl FormatE {
     // populate the file tree.
     pub fn parse<'a>(bytes: &'a [u8]) -> ParseResult<'a, Self> {
         let mut input = make_input(bytes);
-        let map = NewMap::parse(&mut input)?;
+        let map = NewMap::parse_format_e(&mut input)?;
 
         Ok(FormatE {
             image: bytes.to_vec(),
@@ -78,12 +78,10 @@ impl FormatE {
     }
 
     pub fn get_file(&self, path: &Path) -> Option<Vec<u8>> {
-        let Some(tree) = &self.tree else { return None };
-        let Some(fileobject) = tree.files.get(path) else {
-            return None;
-        };
+        let tree = self.tree.as_ref()?;
+        let fileobject = tree.files.get(path)?;
         match fileobject {
-            FileObject::Dir(directory) => return None,
+            FileObject::Dir(directory) => None,
             FileObject::File(dir_entry) => unimplemented!(),
         }
     }
@@ -183,10 +181,7 @@ impl FileTree {
     /// Produce the entire FileTree
     ///
     /// Expects the entire disk image as input
-    fn new<'a, const ZONES: usize>(
-        map: &NewMap<ZONES>,
-        mut input: InputStream<'a>,
-    ) -> FaultableResult<'a, FileTree> {
+    fn new<'a>(map: &NewMap, mut input: InputStream<'a>) -> FaultableResult<'a, FileTree> {
         input.reset_to_start();
 
         let FaultValue(files, faults) = Self::build_tree(map, input)?;
@@ -194,8 +189,8 @@ impl FileTree {
         Ok(FaultValue(FileTree { files }, faults))
     }
 
-    fn build_tree<'a, const ZONES: usize>(
-        map: &NewMap<ZONES>,
+    fn build_tree<'a>(
+        map: &NewMap,
         input: InputStream<'a>,
     ) -> FaultableResult<'a, BTreeMap<Path, FileObject>> {
         let dr = map.get_disc_record();
@@ -269,8 +264,8 @@ impl FileTree {
 
     /// Retrieve the section of the disk that corresponds to the given address
     /// and parse it as [`Directory`] object.
-    fn retrieve_directory<'a, const ZONES: usize>(
-        map: &NewMap<ZONES>,
+    fn retrieve_directory<'a>(
+        map: &NewMap,
         input: InputStream<'a>,
         addr: DiscPosition,
         sector_size: usize,
