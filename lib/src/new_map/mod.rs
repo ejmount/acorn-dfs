@@ -43,6 +43,8 @@ pub enum Fault {
         start_seq_num: u8,
         end_seq_num: u8,
     },
+    #[error("Detected sector size was too big or small to be plausible")]
+    UnacceptableSectorSize(u8),
 }
 
 #[derive(Debug, Clone)]

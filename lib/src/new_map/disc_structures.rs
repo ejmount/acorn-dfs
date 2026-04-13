@@ -220,12 +220,20 @@ impl DiscRecord {
         ((1 << (self.log2_sec_size as usize + 3)) - self.zone_spare as usize)
             / (self.idlen as usize + 1)
     }
+    fn test_sector_size(s: u8) -> Result<u8, Fault> {
+        if !STRICT_MODE || [8, 9, 10].contains(&s) {
+            Ok(s)
+        } else {
+            Err(Fault::UnacceptableSectorSize(s))
+        }
+    }
     fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
         trace(
             "DiscRecord",
             seq! {
                 DiscRecord {
-                    log2_sec_size: le_u8.verify(|s| !STRICT_MODE || [8,9,10].contains(s) ),
+                    //log2_sec_size: le_u8.verify(|s| !STRICT_MODE || [8,9,10].contains(s) ).context(Fault::UnacceptableSectorSize()),
+                    log2_sec_size: le_u8.try_map(Self::test_sector_size),
                     secs_per_track: le_u8,
                     heads: le_u8,
                     density: le_u8,
