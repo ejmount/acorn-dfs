@@ -47,6 +47,16 @@ pub enum Fault {
     UnacceptableSectorSize(u8),
 }
 
+#[derive(Error, Debug, Clone)]
+pub enum IoError {
+    #[error("Could not find indirect disc position {:?}", .0)]
+    MissingFragment(DiscPosition),
+    #[error("No entity with path {}", .0)]
+    MissingTarget(Path),
+    #[error("Path {} did exist but did not have requested type", .0)]
+    InvalidTarget(Path),
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct FaultValue<T>(pub(crate) T, pub(crate) Vec<Fault>);
 impl<T> FaultValue<T> {

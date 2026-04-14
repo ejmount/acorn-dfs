@@ -18,7 +18,7 @@ use super::util::{
     ParseResult,
     make_input,
 };
-use super::{Fault, FaultValue};
+use super::{Fault, FaultValue, IoError};
 
 /// Represents the parsed contents of a ADFS format-E disk.
 ///
@@ -77,13 +77,27 @@ impl FormatE {
         Ok(())
     }
 
-    pub fn get_file(&self, path: &Path) -> Option<Vec<u8>> {
-        let tree = self.tree.as_ref()?;
-        let fileobject = tree.files.get(path)?;
-        match fileobject {
-            FileObject::Dir(directory) => None,
-            FileObject::File(dir_entry) => unimplemented!(),
-        }
+    pub fn get_file(&self, path: &Path) -> Result<Vec<u8>, IoError> {
+        let tree = self.tree.as_ref().expect("Must call expand_tree first");
+        let fileobject = tree
+            .files
+            .get(path)
+            .ok_or(IoError::MissingTarget(path.clone()))?;
+
+        let dir_entry = if let FileObject::File(dir_entry) = fileobject {
+            dir_entry
+        } else {
+            return Err(IoError::InvalidTarget(path.clone()));
+        };
+
+        let region = self
+            .map
+            .get_file_region(dir_entry)
+            .ok_or(IoError::MissingFragment(dir_entry.address))?;
+
+        let mut contents = Vec::with_capacity(region.end - region.start);
+        contents.extend_from_slice(&self.image[region]);
+        Ok(contents)
     }
 }
 
@@ -148,7 +162,8 @@ impl std::fmt::Display for Path {
 
 impl From<&'_ str> for Path {
     fn from(value: &'_ str) -> Self {
-        Path::from_bytes(value.as_bytes()).expect("Could not interpret {value} as ADFS Path")
+        Path::from_bytes(value.as_bytes())
+            .unwrap_or_else(|| panic!("Could not interpret {value} as ADFS Path"))
     }
 }
 
@@ -157,7 +172,7 @@ impl From<&'_ str> for Path {
 /// This does not correspond neatly to disk structures, where a [`DirEntry`]
 /// representing a file only exists as a field inside a [`Directory`]
 #[derive(Debug, Clone)]
-enum FileObject {
+pub enum FileObject {
     Dir(Box<Directory>),
     File(DirEntry),
 }
@@ -185,7 +200,7 @@ impl FileTree {
         input.reset_to_start();
 
         let FaultValue(files, faults) = Self::build_tree(map, input)?;
-        dbg!(&faults);
+        //dbg!(&faults);
         Ok(FaultValue(FileTree { files }, faults))
     }
 
@@ -218,7 +233,6 @@ impl FileTree {
                 *path = Path::default();
             }
         });
-        dbg!(&faults);
 
         let mut queue = vec![(Path::default(), root.clone())];
 
@@ -278,6 +292,10 @@ impl FileTree {
         cursor.next_slice(entry_region.start + offset);
 
         Directory::parse(&mut cursor)
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &'_ Path> {
+        self.files.keys()
     }
 }
 

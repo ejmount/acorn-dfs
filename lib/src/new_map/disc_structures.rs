@@ -15,6 +15,7 @@ use winnow::stream::Location;
 use winnow::token::take;
 use winnow::{ModalResult, Parser};
 
+use super::filesystem::DirEntry;
 use super::util::{
     AllocationParsingParams,
     BitErr,
@@ -69,6 +70,29 @@ impl NewMap {
             blocks: vec![],
         })
     }
+    pub(crate) fn get_fragment(&self, id: FragmentId) -> Option<&FragmentBlock> {
+        let mut fragment = self.leading_block.get_fragment(id);
+        for b in &self.blocks {
+            fragment = fragment.or(b.get_fragment(id))
+        }
+        fragment
+    }
+    pub(crate) fn get_file_region(&self, dir_entry: &DirEntry) -> Option<Range<usize>> {
+        let position = dir_entry.address;
+        let fragment = self.get_fragment(position.fragment())?;
+
+        let sector_number = position.sector_idx();
+        let sector_size = self.leading_block.disc_record.sector_size_in_bytes();
+        let byte_offset: usize = sector_number as usize * sector_size;
+
+        let Range { start, end } = fragment.disk_region();
+        let end = end.min(start + dir_entry.len as usize);
+
+        Some(Range {
+            start: start + byte_offset,
+            end,
+        })
+    }
 }
 
 /// The first map block is special because it contains the [`DiscRecord`] on top
@@ -96,6 +120,9 @@ impl LeadingMapBlock {
             allocations,
             _unused,
         })
+    }
+    fn get_fragment(&self, id: FragmentId) -> Option<&FragmentBlock> {
+        self.allocations.get_fragment(id)
     }
 }
 
@@ -134,6 +161,9 @@ impl MapBlock {
             allocations,
             _unused,
         })
+    }
+    fn get_fragment(&self, id: FragmentId) -> Option<&FragmentBlock> {
+        self.allocations.get_fragment(id)
     }
 }
 

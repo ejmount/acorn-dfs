@@ -24,6 +24,7 @@ pub enum Verb {
         #[arg(short, long)]
         destination: OsPath,
     },
+    List,
 }
 
 fn main() {
@@ -47,10 +48,16 @@ fn main() {
     }
 
     match args.verb {
+        Verb::List => {
+            let tree = disk.tree.unwrap();
+            for k in tree.keys() {
+                println!("{k}");
+            }
+        }
         Verb::ExtractFile { path, destination } => match disk.get_file(&path) {
-            Some(contents) => unimplemented!(),
-            None => {
-                eprintln!("Could not find file at {path} on the disk")
+            Ok(contents) => std::fs::write(destination, contents).unwrap(),
+            Err(e) => {
+                panic!("Could not find file at {path} on the disk: {e}")
             }
         },
     }

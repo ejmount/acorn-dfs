@@ -38,7 +38,7 @@ impl std::fmt::Debug for MagicString {
 
 const SIZE_OF_DIRECTORY: usize = 77;
 #[derive(Debug, Clone)]
-pub(crate) struct Directory {
+pub struct Directory {
     pub(crate) header: DirHeader,
     pub(crate) entries: ArrayVec<DirEntry, SIZE_OF_DIRECTORY>,
     pub(crate) tail: DirTail,
@@ -114,7 +114,7 @@ pub(crate) struct DirHeader {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct DirEntry {
+pub struct DirEntry {
     pub(crate) obj_name: FixedLenString<MAX_SEGMENT_LENGTH>,
     pub(crate) load: u32,
     pub(crate) exec: u32,
@@ -129,7 +129,7 @@ impl DirEntry {
         let exec = trace("exec", le_u32).parse_next(input)?;
         let len = trace("len", le_u32).parse_next(input)?;
         let address = trace("address", DiscPosition::parse_for_new_map).parse_next(input)?;
-        let FaultValue(attrs, fault) = Attributes::parse(input, obj_name)?;
+        let FaultValue(attrs, fault) = Attributes::parse(input)?;
 
         Ok(FaultValue(
             DirEntry {
@@ -169,10 +169,7 @@ bitflags::bitflags! {
     }
 }
 impl Attributes {
-    fn parse<'a>(
-        input: &mut InputStream<'a>,
-        obj_name: FixedLenString,
-    ) -> FaultableResult<'a, Self> {
+    fn parse<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
         if STRICT_MODE {
             let pos = input.current_token_start();
             trace("Attributes", le_u8)
