@@ -32,18 +32,18 @@ pub enum Fault {
         root_link: DiscPosition,
         sector_size: usize,
     },
-    #[error("Expected Nick or Hugo, found {}", str::escape_debug(&String::from_utf8_lossy(&*.0)))]
+    #[error("Expected 'Nick' or 'Hugo', found {}", str::escape_debug(&String::from_utf8_lossy(&*.0)))]
     MagicStringFailure([u8; 4]),
 
     #[error(
-        "Directory {path} began with sequence number {start_seq_num} but ended with {end_seq_num}"
+        "Directory {path} began with sequence number 0x{start_seq_num:X} but ended with 0x{end_seq_num:X}"
     )]
     SequenceNumberMismatch {
         path: Path,
         start_seq_num: u8,
         end_seq_num: u8,
     },
-    #[error("Detected sector size was too big or small to be plausible")]
+    #[error("Detected sector size ({}) was too big or small to be plausible", 2usize.pow(*.0 as _))]
     UnacceptableSectorSize(u8),
 }
 
