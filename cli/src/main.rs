@@ -25,7 +25,11 @@ pub enum Verb {
         #[arg(short, long)]
         destination: OsPath,
     },
-    List,
+    List {
+        #[arg(short, long)]
+        #[arg(value_parser = Path::from_str)]
+        prefix: Option<Path>,
+    },
 }
 
 fn main() {
@@ -49,9 +53,9 @@ fn main() {
     }
 
     match args.verb {
-        Verb::List => {
+        Verb::List { prefix } => {
             let tree = disk.tree.unwrap();
-            for k in tree.keys() {
+            for k in tree.keys_by_prefix(prefix.unwrap_or_default()) {
                 println!("{k}");
             }
         }

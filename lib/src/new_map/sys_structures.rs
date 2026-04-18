@@ -142,6 +142,23 @@ impl Path {
 
         Some(Path(segments.unwrap_or_default()))
     }
+    fn is_prefix(&self, other: &Self) -> bool {
+        let longer_len = self.0.len().max(other.0.len());
+        for i in 0..(longer_len - 1) {
+            match (self.0.get(i), other.0.get(i)) {
+                (Some(i), Some(j)) if i == j => continue,
+                _ => return false,
+            };
+        }
+        if let Some(i) = self.0.get(longer_len)
+            && let Some(j) = other.0.get(longer_len)
+            && i.is_prefix(j)
+        {
+            return true;
+        } else {
+            return false;
+        }
+    }
 
     pub(crate) fn join(&self, segment: FixedLenString) -> Path {
         let mut segments = self.0.clone();
@@ -293,6 +310,15 @@ impl FileTree {
 
     pub fn keys(&self) -> impl Iterator<Item = &'_ Path> {
         self.files.keys()
+    }
+
+    pub fn keys_by_prefix(&self, prefix: Path) -> impl Iterator<Item = &'_ Path> {
+        let prefix2 = prefix.clone();
+        self.files
+            .iter()
+            .map(|(path, _)| path)
+            .skip_while(move |path| **path < prefix)
+            .take_while(move |path| prefix2.is_prefix(path))
     }
 }
 

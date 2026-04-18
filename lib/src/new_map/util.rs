@@ -281,6 +281,16 @@ impl<const LEN: usize> FixedLenString<LEN> {
             .unwrap_or(self.0.len())
     }
 
+    pub fn is_prefix(&self, other: &Self) -> bool {
+        if self.len() > other.len() {
+            return false;
+        };
+        self.valid_range()
+            .iter()
+            .zip(other.valid_range())
+            .all(|(&i, &j)| i == j)
+    }
+
     /// The segment of this string that represents valid usable data
     pub fn valid_range(&self) -> &[u8] {
         let idx = self.len();
