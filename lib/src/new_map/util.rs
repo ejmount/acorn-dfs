@@ -302,7 +302,7 @@ impl<const N: usize> Debug for FixedLenString<N> {
         write!(f, "FixedLenString({:?})", String::from_utf8_lossy(&self.0))
     }
 }
-impl Display for FixedLenString {
+impl<const N: usize> Display for FixedLenString<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let lossy = String::from_utf8_lossy(self.valid_range());
         write!(f, "{}", str::escape_default(&lossy))
