@@ -148,6 +148,10 @@ impl Path {
         segments.push(segment);
         Path(segments)
     }
+
+    pub fn from_str(value: &str) -> Result<Path, String> {
+        Path::from_bytes(value.as_bytes()).ok_or("This broke".to_owned())
+    }
 }
 
 impl std::fmt::Display for Path {
@@ -157,13 +161,6 @@ impl std::fmt::Display for Path {
             write!(f, "{}{dir}", Self::DIR_SEPARATOR as char)?;
         }
         Ok(())
-    }
-}
-
-impl From<&'_ str> for Path {
-    fn from(value: &'_ str) -> Self {
-        Path::from_bytes(value.as_bytes())
-            .unwrap_or_else(|| panic!("Could not interpret {value} as ADFS Path"))
     }
 }
 

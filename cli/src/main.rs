@@ -20,6 +20,7 @@ pub enum Verb {
     #[command(id = "extract")]
     ExtractFile {
         #[arg(short, long)]
+        #[arg(value_parser = Path::from_str)]
         path: Path,
         #[arg(short, long)]
         destination: OsPath,
