@@ -2,6 +2,7 @@ use std::ffi::OsString;
 use std::path::PathBuf as OsPath;
 
 use acorn_dfs::new_map::Path;
+use acorn_dfs::new_map::filesystem::DirEntry;
 use acorn_dfs::new_map::sys_structures::FormatE;
 use clap::Parser;
 
@@ -17,6 +18,7 @@ struct Args {
 
 #[derive(Debug, Clone, Parser)]
 pub enum Verb {
+    Meta,
     #[command(id = "extract")]
     ExtractFile {
         #[arg(short, long)]
@@ -53,6 +55,9 @@ fn main() {
     }
 
     match args.verb {
+        Verb::Meta => {
+            println!("{}", disk.get_map_json());
+        }
         Verb::List { prefix } => {
             let tree = disk.tree.unwrap();
             for k in tree.keys_by_prefix(prefix.unwrap_or_default()) {
@@ -60,10 +65,39 @@ fn main() {
             }
         }
         Verb::ExtractFile { path, destination } => match disk.get_file(&path) {
-            Ok(contents) => std::fs::write(destination, contents).unwrap(),
+            Ok((entry, contents)) => {
+                write_file_plus_metadata(destination, &entry, contents).unwrap()
+            }
             Err(e) => {
                 panic!("Could not find file at {path} on the disk: {e}")
             }
         },
     }
+}
+
+fn write_file_plus_metadata(
+    destination: OsPath,
+    entry: &DirEntry,
+    contents: Vec<u8>,
+) -> Result<(), std::io::Error> {
+    std::fs::write(&destination, contents)?;
+    let mut inf_path = destination.clone();
+    inf_path.set_extension("inf");
+    let inf_data = inf_data(&entry);
+    std::fs::write(inf_path, inf_data)
+}
+
+fn inf_data(dir: &DirEntry) -> String {
+    use std::fmt::Write;
+    let DirEntry {
+        obj_name,
+        load,
+        exec,
+        len,
+        attrs,
+        ..
+    } = dir;
+    let mut s = String::new();
+    write!(s, "\"{obj_name}\" {load:X} {exec:X} {len} {}", attrs.bits()).unwrap();
+    s
 }

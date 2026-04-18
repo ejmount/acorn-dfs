@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
 
+use serde::Serialize;
 use winnow::Parser;
 use winnow::combinator::{opt, preceded, separated, terminated};
 use winnow::error::{AddContext, TreeError};
@@ -77,7 +78,7 @@ impl FormatE {
         Ok(())
     }
 
-    pub fn get_file(&self, path: &Path) -> Result<Vec<u8>, IoError> {
+    pub fn get_file(&self, path: &Path) -> Result<(DirEntry, Vec<u8>), IoError> {
         let tree = self.tree.as_ref().expect("Must call expand_tree first");
         let fileobject = tree
             .files
@@ -97,7 +98,11 @@ impl FormatE {
 
         let mut contents = Vec::with_capacity(region.end - region.start);
         contents.extend_from_slice(&self.image[region]);
-        Ok(contents)
+        Ok((dir_entry.clone(), contents))
+    }
+
+    pub fn get_map_json(&self) -> String {
+        serde_json::to_string_pretty(&self.map).unwrap()
     }
 }
 

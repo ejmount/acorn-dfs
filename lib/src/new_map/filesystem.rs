@@ -116,12 +116,12 @@ pub(crate) struct DirHeader {
 
 #[derive(Debug, Clone)]
 pub struct DirEntry {
-    pub(crate) obj_name: FixedLenString<MAX_SEGMENT_LENGTH>,
-    pub(crate) load: u32,
-    pub(crate) exec: u32,
-    pub(crate) len: u32,
-    pub(crate) address: DiscPosition,
-    pub(crate) attrs: Attributes,
+    pub obj_name: FixedLenString<MAX_SEGMENT_LENGTH>,
+    pub load: u32,
+    pub exec: u32,
+    pub len: u32,
+    pub address: DiscPosition,
+    pub attrs: Attributes,
 }
 impl DirEntry {
     fn parse<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {

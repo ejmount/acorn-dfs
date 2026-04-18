@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Range;
 
+use serde::Serialize;
 use winnow::binary::bits::bits;
 use winnow::binary::{le_u8, le_u16, le_u32};
 use winnow::combinator::{seq, trace};
@@ -44,7 +45,7 @@ const ALLOCATION_MAP_START_IN_BITS: usize = (3 + 61) * 8;
 /// disk. Parsing the collection of `MapBlocks` is not straightforward because
 /// the exact size of a `MapBlock` is defined by the disc geometry recorded in
 /// the `DiscRecord`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NewMap {
     leading_block: LeadingMapBlock,
     /// Trailing blocks. This may be empty if there is only one zone.
@@ -97,11 +98,13 @@ impl NewMap {
 
 /// The first map block is special because it contains the [`DiscRecord`] on top
 /// of everything an ordinary [`MapBlock`] contains.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 struct LeadingMapBlock {
     header: Header,
     disc_record: DiscRecord,
+    #[serde(skip)]
     allocations: AllocationMap,
+    #[serde(skip)]
     _unused: Vec<u8>,
 }
 
@@ -134,10 +137,12 @@ impl LeadingMapBlock {
 /// A MapBlock is also padded to be exactly one disk sector long, which means
 /// the DiscRecord must be accessible. For the first block, we have this earlier
 /// in the parsing step, but otherwise it must be passed in.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 struct MapBlock {
     header: Header,
+    #[serde(skip)]
     allocations: AllocationMap,
+    #[serde(skip)]
     /// the remainder of the sector
     _unused: Vec<u8>,
 }
@@ -169,7 +174,7 @@ impl MapBlock {
 
 /// A prefix of a [`MapBlock`], containing various checks and the pointer to
 /// beginning of the free list
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 struct Header {
     zone_check: u8,
     /// Pointer to the first free fragment in this zone, relative to the
@@ -209,7 +214,7 @@ impl Header {
 /// 3. `root_dir`: the position of the root directory record, as a byte offset
 /// 4. `size`: the total size of the disk, which then dictates how large the
 ///    Allocation Map is
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct DiscRecord {
     pub(crate) log2_sec_size: u8,
     pub(crate) secs_per_track: u8,

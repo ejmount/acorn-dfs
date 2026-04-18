@@ -6,6 +6,7 @@ use std::hash::{Hash, Hasher};
 use std::num::NonZero;
 use std::ops::Add;
 
+use serde::Serialize;
 use winnow::binary::le_u24;
 use winnow::combinator::trace;
 use winnow::error::{ErrMode, TreeError};
@@ -179,7 +180,7 @@ impl Debug for BitPosition {
 ///
 ///
 /// https://www.riscos.com/support/developers/prm/filecore.html#73575
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct DiscPosition(pub(crate) u32);
 impl DiscPosition {
     pub(crate) fn parse_for_new_map<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
@@ -334,6 +335,14 @@ impl<const LEN: usize> Ord for FixedLenString<LEN> {
         self_valid.cmp(other_valid)
     }
 }
+impl<const N: usize> Serialize for FixedLenString<N> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.collect_seq(&self.0)
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -386,7 +395,7 @@ mod test {
     #[test]
     fn fixed_string_properties() {
         let empty = FixedLenString([0; 10]);
-        assert_eq!(empty.valid_range(), &[]);
+        assert!(empty.valid_range().is_empty());
 
         let a = FixedLenString([b'a', b'b', 0]);
         let b = FixedLenString([b'a', b'b', b'c']);
