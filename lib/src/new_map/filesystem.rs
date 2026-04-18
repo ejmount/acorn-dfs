@@ -103,7 +103,6 @@ impl Directory {
                 faults,
             ))
         })
-        .map(Into::into)
         .parse_next(input)
     }
 }
