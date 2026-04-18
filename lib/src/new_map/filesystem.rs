@@ -19,6 +19,7 @@ use super::util::{
 use super::{Fault, FaultValue, STRICT_MODE};
 
 pub(crate) const MAX_SEGMENT_LENGTH: usize = 10;
+pub(crate) const MAX_TITLE_LENGTH: usize = 19;
 
 #[derive(Clone, Copy)]
 struct MagicString([u8; 4]);
@@ -76,7 +77,7 @@ impl Directory {
                     last_mark: le_u8,
                     reserved: le_u16,
                     parent: DiscPosition::parse_for_new_map,
-                    title: FixedLenString::<19>::parse_from_disk,
+                    title: FixedLenString::<MAX_TITLE_LENGTH>::parse_from_disk,
                     name: FixedLenString::parse_from_disk,
                     end_seq_num: le_u8,
                     end_name: MagicString::parse,
@@ -150,7 +151,7 @@ pub(crate) struct DirTail {
     last_mark: u8,
     reserved: u16,
     parent: DiscPosition,
-    title: FixedLenString<19>,
+    title: FixedLenString<MAX_TITLE_LENGTH>,
     name: FixedLenString<MAX_SEGMENT_LENGTH>,
     end_seq_num: u8,
     end_name: MagicString,
