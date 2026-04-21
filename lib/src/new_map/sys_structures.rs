@@ -148,31 +148,35 @@ impl Path {
         Some(Path(segments.unwrap_or_default()))
     }
     fn is_prefix(&self, other: &Self) -> bool {
-        let longer_len = self.0.len().max(other.0.len());
-        for i in 0..(longer_len - 1) {
-            match (self.0.get(i), other.0.get(i)) {
-                (Some(i), Some(j)) if i == j => continue,
-                _ => return false,
-            };
+        let mut zipper: Vec<_> = self.0.iter().zip(other.0.iter()).collect();
+        let last = zipper.pop();
+        for (a, b) in zipper {
+            if a != b {
+                return false;
+            }
         }
-        if let Some(i) = self.0.get(longer_len)
-            && let Some(j) = other.0.get(longer_len)
-            && i.is_prefix(j)
-        {
-            return true;
+        if let Some((a, b)) = last {
+            a.is_prefix(b)
         } else {
-            return false;
+            true
         }
     }
 
+    /// Creates a new Path that appends the given segment to the end of `self`
     pub(crate) fn join(&self, segment: FixedLenString) -> Path {
         let mut segments = self.0.clone();
         segments.push(segment);
         Path(segments)
     }
 
-    pub fn from_str(value: &str) -> Result<Path, String> {
-        Path::from_bytes(value.as_bytes()).ok_or("This broke".to_owned())
+    /// Attempts to construct a Path out of a given string that was, e.g.
+    /// provided by a user.
+    ///
+    /// This is intended for user-facing calling, it
+    /// currently does nothing to mitigate UTF-8 not matching the ADFS
+    /// character set
+    pub fn from_str(path: &str) -> Result<Path, String> {
+        Path::from_bytes(path.as_bytes()).ok_or(format!("Could not convert '{path}' to ADFS path"))
     }
 }
 
@@ -318,11 +322,12 @@ impl FileTree {
     }
 
     pub fn keys_by_prefix(&self, prefix: Path) -> impl Iterator<Item = &'_ Path> {
+        let prefix1 = prefix.clone();
         let prefix2 = prefix.clone();
         self.files
             .iter()
             .map(|(path, _)| path)
-            .skip_while(move |path| **path < prefix)
+            .skip_while(move |path| **path < prefix1)
             .take_while(move |path| prefix2.is_prefix(path))
     }
 }
@@ -359,5 +364,24 @@ mod test {
             "$.Utilities.!TeleRoute.Templates"
         );
         assert_eq!(Path::from_bytes(b"$.Foo\0o.Bar"), None);
+    }
+
+    #[test]
+    fn prefixes() {
+        let cases = [
+            ("$", "$.A", true),
+            ("$.A", "$.A", true),
+            ("$.A", "$.AB", true),
+            ("$.A", "$.A.B", true),
+            ("$.B", "$.A", false),
+        ];
+
+        for (prefix, haystack, expected) in cases {
+            let needle = Path::from_bytes(prefix.as_bytes()).unwrap();
+            let path = Path::from_bytes(haystack.as_bytes()).unwrap();
+            let test = needle.is_prefix(&path);
+            let test = test == expected;
+            assert!(test, "'{prefix}' is not a prefix of '{haystack}'");
+        }
     }
 }
