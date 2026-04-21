@@ -98,10 +98,7 @@ impl NewMap {
     }
 
     pub(crate) fn get_allocation(&self, idx: usize) -> &AllocationMap {
-        match idx {
-            0 => &self.blocks[0].allocations,
-            n => &self.blocks[n - 1].allocations,
-        }
+        &self.blocks[idx].allocations
     }
     pub(crate) fn get_fragment(&self, id: FragmentId) -> Option<&FragmentBlock> {
         // TODO: Update this for multiple zones
