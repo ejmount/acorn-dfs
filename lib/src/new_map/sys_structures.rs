@@ -57,7 +57,7 @@ impl FormatE {
     // populate the file tree.
     pub fn parse<'a>(bytes: &'a [u8]) -> ParseResult<'a, Self> {
         let mut input = make_input(bytes);
-        let FaultValue(map, faults) = NewMap::parse_format_e(&mut input)?;
+        let FaultValue(map, faults) = NewMap::parse(&mut input, 1)?;
 
         Ok(FormatE {
             image: bytes.to_vec(),

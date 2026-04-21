@@ -42,14 +42,17 @@ const ALLOCATION_MAP_START_IN_BITS: usize = (3 + 61) * 8;
 /// The "new"-style file allocation map structure, used by format E and F disks.
 ///
 /// Format E and F disks are conceptually divided into a number of zones, with
-/// one [`MapBlock`] per zone. However, the first Map Block is special because
-/// it contains the [`DiscRecord`], which charcteristics the geometry of the
-/// disk. Parsing the collection of `MapBlocks` is not straightforward because
-/// the exact size of a `MapBlock` is defined by the disc geometry recorded in
-/// the `DiscRecord`.
+/// one [`MapBlock`] per zone. Conceptually, the first Map Block is special
+/// because it contains the [`DiscRecord`], which charcteristics the geometry of
+/// the disk. Parsing the collection of `MapBlocks` is not straightforward
+/// because the exact size of a `MapBlock` is defined by the disc geometry
+/// recorded in the `DiscRecord`.
+///
+/// In practice, we ignore the DR being part of the first MB and instead
+/// represent it at the higher level as part of the overall Map, which allows
+/// handling for the MapBlocks to be uniform.
 #[derive(Debug, Clone, Serialize)]
 pub struct NewMap {
-    leading_block: MapBlock,
     /// Various metadata defining the goemetry of the disc
     ///
     /// On disk, this is stored inside the first MapBlock, but is pulled out
@@ -61,14 +64,23 @@ pub struct NewMap {
 
 impl NewMap {
     /// Construct a format-E NewMap out of the given byte stream
-    pub fn parse_format_e<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
-        let FaultValue((leading_block, disc_record), faults) =
+    pub fn parse<'a>(input: &mut InputStream<'a>, num_zones: usize) -> FaultableResult<'a, Self> {
+        assert!(num_zones > 0);
+        let FaultValue((leading_block, disc_record), mut faults) =
             MapBlock::parse_with_disc_record(true, input)?;
+
+        let mut blocks = vec![leading_block];
+
+        for _ in 0..(num_zones - 1) {
+            let FaultValue(block, sub_faults) = MapBlock::parse(input, false, &disc_record)?;
+            faults.extend(sub_faults);
+            blocks.push(block);
+        }
+
         Ok(FaultValue(
             NewMap {
-                leading_block,
                 disc_record,
-                blocks: vec![],
+                blocks,
             },
             faults,
         ))
@@ -79,12 +91,13 @@ impl NewMap {
 
     pub(crate) fn get_allocation(&self, idx: usize) -> &AllocationMap {
         match idx {
-            0 => &self.leading_block.allocations,
+            0 => &self.blocks[0].allocations,
             n => &self.blocks[n - 1].allocations,
         }
     }
     pub(crate) fn get_fragment(&self, id: FragmentId) -> Option<&FragmentBlock> {
-        let mut fragment = self.leading_block.get_fragment(id);
+        // TODO: Update this for multiple zones
+        let mut fragment = self.blocks[0].get_fragment(id);
         for b in &self.blocks {
             fragment = fragment.or(b.get_fragment(id))
         }
@@ -131,7 +144,7 @@ impl MapBlock {
         input: &mut InputStream<'a>,
         includes_map: bool,
         disc: &DiscRecord,
-    ) -> ParseResult<'a, Self> {
+    ) -> FaultableResult<'a, Self> {
         let header = Header::parse(input)?;
         let params = AllocationParsingParams::new(includes_map, header.free_link, disc);
 
@@ -140,11 +153,16 @@ impl MapBlock {
             - (input.current_token_start() % disc.sector_size_in_bytes());
         let _unused = Vec::from(take(remainder).parse_next(input)?);
 
-        Ok(MapBlock {
-            header,
-            allocations,
-            _unused,
-        })
+        // TODO: Add zone_check validation
+
+        Ok(FaultValue(
+            MapBlock {
+                header,
+                allocations,
+                _unused,
+            },
+            vec![],
+        ))
     }
     fn parse_with_disc_record<'a>(
         includes_map: bool,
