@@ -57,13 +57,13 @@ impl FormatE {
     // populate the file tree.
     pub fn parse<'a>(bytes: &'a [u8]) -> ParseResult<'a, Self> {
         let mut input = make_input(bytes);
-        let map = NewMap::parse_format_e(&mut input)?;
+        let FaultValue(map, faults) = NewMap::parse_format_e(&mut input)?;
 
         Ok(FormatE {
             image: bytes.to_vec(),
             map,
             tree: None,
-            faults: vec![],
+            faults,
         })
     }
 

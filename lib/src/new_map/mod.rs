@@ -45,6 +45,8 @@ pub enum Fault {
     },
     #[error("Detected sector size ({}) was too big or small to be plausible", 2usize.pow(*.0 as _))]
     UnacceptableSectorSize(u8),
+    #[error("Calculated a zone check value of {actual:2X}, but expected {expected:2X}")]
+    ZoneCheckFailure { expected: u8, actual: u8 },
 }
 
 #[derive(Error, Debug, Clone)]
@@ -58,7 +60,7 @@ pub enum IoError {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct FaultValue<T>(pub(crate) T, pub(crate) Vec<Fault>);
+pub struct FaultValue<T>(pub T, pub Vec<Fault>);
 
 impl<T> From<T> for FaultValue<T> {
     fn from(value: T) -> Self {
