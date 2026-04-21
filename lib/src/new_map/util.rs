@@ -7,6 +7,7 @@ use std::num::NonZero;
 use std::ops::Add;
 
 use serde::Serialize;
+use winnow::binary::bits::Bits;
 use winnow::binary::le_u24;
 use winnow::combinator::trace;
 use winnow::error::{ErrMode, TreeError};
@@ -37,7 +38,7 @@ pub(crate) type FaultableResult<'a, Type> = ParseResult<'a, FaultValue<Type>>;
 /// Input for parsing the
 /// [`AllocationMap`][`super::disc_structures::AllocationMap`] which is the only
 /// bit-level stream
-pub(crate) type BitInput<'a> = (InputStream<'a>, usize);
+pub(crate) type BitInput<'a> = Bits<InputStream<'a>>;
 pub(crate) type BitErr<'a> = TreeError<BitInput<'a>, Fault>;
 
 /// See [`crate::new_map::disc_structures::FragmentBlock`]. This value has
@@ -53,7 +54,7 @@ pub(crate) fn make_input<'a>(input: &'a [u8]) -> InputStream<'a> {
 ///
 /// This is the opposite order as [winnow::binary::bits::bool] uses.
 pub fn take_ls_bit<'a>(input: &mut BitInput<'a>) -> ModalResult<bool, BitErr<'a>> {
-    let (stream, offset) = input;
+    let Bits(stream, offset) = input;
     let byte = stream
         .peek_token()
         .ok_or(ErrMode::Incomplete(winnow::error::Needed::Size(
@@ -349,12 +350,14 @@ mod test {
     use std::cmp::Ordering;
     use std::fmt::Write;
 
+    use winnow::binary::bits::Bits;
+
     use super::{DiscPosition, FixedLenString, make_input, take_ls_bit};
 
     #[test]
     fn test_ls_bit() {
-        let mut lsb = (make_input(&[1]), 0);
-        let mut msb = (make_input(&[0x80, 0x01]), 0);
+        let mut lsb = Bits(make_input(&[1]), 0);
+        let mut msb = Bits(make_input(&[0x80, 0x01]), 0);
 
         let lsb = &mut lsb;
         let msb = &mut msb;
@@ -372,7 +375,7 @@ mod test {
 
     #[test]
     fn repeat_test() {
-        let mut msb = (make_input(&[0xAA, 0xAA]), 0);
+        let mut msb = Bits(make_input(&[0xAA, 0xAA]), 0);
         let c = &mut msb;
         let mut outs = vec![];
         for _ in 0..16 {
