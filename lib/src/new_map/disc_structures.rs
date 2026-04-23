@@ -32,7 +32,7 @@ use super::util::{
 };
 use super::{Fault, STRICT_MODE};
 use crate::new_map::FaultValue;
-use crate::new_map::util::FaultableResult;
+use crate::new_map::util::{FaultableResult, take_rest_of_sector};
 
 /// The offset of the allocation map from the beginning of the disk
 //////
@@ -190,9 +190,10 @@ impl MapBlock {
         let disc_record = DiscRecord::parse(input)?;
         let params = AllocationParsingParams::new(includes_map, header.free_link, &disc_record);
         let allocations = AllocationMap::parse(input, &params)?;
-        let remainder = disc_record.sector_size_in_bytes()
-            - (input.current_token_start() % disc_record.sector_size_in_bytes());
-        let _unused = Vec::from(take(remainder).parse_next(input)?);
+        let _unused = take_rest_of_sector(input, disc_record.sector_size_in_bytes())?
+            .iter()
+            .copied()
+            .collect();
 
         let sector_end = input.checkpoint();
         input.reset(&sector_start);
@@ -217,7 +218,6 @@ impl MapBlock {
             (
                 MapBlock {
                     header,
-
                     allocations,
                     _unused,
                 },

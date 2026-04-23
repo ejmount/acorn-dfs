@@ -11,7 +11,7 @@ use winnow::binary::bits::Bits;
 use winnow::binary::le_u24;
 use winnow::combinator::trace;
 use winnow::error::{ErrMode, TreeError};
-use winnow::stream::Stream;
+use winnow::stream::{Location, Stream};
 use winnow::token::take;
 use winnow::{BStr, LocatingSlice, ModalResult, Parser};
 
@@ -48,6 +48,15 @@ pub(crate) type FragmentId = u16;
 /// Creates an InputStream for use in most other functions out of a byte-slice
 pub(crate) fn make_input<'a>(input: &'a [u8]) -> InputStream<'a> {
     LocatingSlice::new(BStr::new(input))
+}
+
+pub(crate) fn take_rest_of_sector<'a>(
+    input: &mut InputStream<'a>,
+    sector_size_in_bytes: usize,
+) -> ParseResult<'a, &'a [u8]> {
+    let remainder = sector_size_in_bytes - (input.current_token_start() % sector_size_in_bytes);
+
+    take(remainder).parse_next(input)
 }
 
 /// Parses and returns a byte stream in least-significant first order
