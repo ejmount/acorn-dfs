@@ -78,6 +78,7 @@ impl FormatE {
         Ok(())
     }
 
+    /// Gets the metadata and contents of a given path
     pub fn get_file(&self, path: &Path) -> Result<(DirEntry, Vec<u8>), IoError> {
         let tree = self.tree.as_ref().expect("Must call expand_tree first");
         let fileobject = tree
