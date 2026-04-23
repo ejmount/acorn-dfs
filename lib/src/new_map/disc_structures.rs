@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::ops::Range;
+use std::ops::{BitXor, Range};
 
 use serde::Serialize;
 use winnow::binary::bits::bits;
@@ -38,6 +38,11 @@ use crate::new_map::util::FaultableResult;
 //////
 /// Used to calculate the disk-absolute ranges associated with each allocation
 const ALLOCATION_MAP_START_IN_BITS: usize = (3 + 61) * 8;
+
+/// The xor of the cross check header values should be this value
+///
+/// https://www.riscos.com/support/developers/prm/filecore.html#98861
+const EXPECTED_CROSS_CHECK: u8 = 0xFF;
 
 /// The "new"-style file allocation map structure, used by format E and F disks.
 ///
@@ -77,13 +82,16 @@ impl NewMap {
             blocks.push(block);
         }
 
-        Ok(FaultValue(
-            NewMap {
+        let new_map = NewMap {
                 disc_record,
                 blocks,
-            },
-            faults,
-        ))
+            };
+
+        if new_map.cross_check() != EXPECTED_CROSS_CHECK {
+            faults.push(Fault::CrossCheckFailure(new_map.cross_check()));
+        }
+
+        Ok(FaultValue(new_map, faults))
     }
     pub(crate) fn get_disc_record(&self) -> &DiscRecord {
         &self.disc_record
@@ -118,6 +126,14 @@ impl NewMap {
             start: start + byte_offset,
             end,
         })
+    }
+
+    pub fn cross_check(&self) -> u8 {
+        self.blocks
+            .iter()
+            .map(|b| b.header.cross_check)
+            .reduce(BitXor::bitxor)
+            .expect("Map should not contain zero blocks")
     }
 }
 
