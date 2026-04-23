@@ -62,7 +62,7 @@ pub(crate) fn take_rest_of_sector<'a>(
 /// Parses and returns a byte stream in least-significant first order
 ///
 /// This is the opposite order as [winnow::binary::bits::bool] uses.
-pub fn take_ls_bit<'a>(input: &mut BitInput<'a>) -> ModalResult<bool, BitErr<'a>> {
+pub(crate) fn take_ls_bit<'a>(input: &mut BitInput<'a>) -> ModalResult<bool, BitErr<'a>> {
     let Bits(stream, offset) = input;
     let byte = stream
         .peek_token()
