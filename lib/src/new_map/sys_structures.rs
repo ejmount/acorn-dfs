@@ -177,7 +177,7 @@ impl Path {
     /// This is intended for user-facing calling, it
     /// currently does nothing to mitigate UTF-8 not matching the ADFS
     /// character set
-    pub fn from_str(path: &str) -> Result<Path, String> {
+    pub fn try_from_str(path: &str) -> Result<Path, String> {
         Path::from_bytes(path.as_bytes()).ok_or(format!("Could not convert '{path}' to ADFS path"))
     }
 }
