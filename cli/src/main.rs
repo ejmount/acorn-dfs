@@ -22,14 +22,14 @@ pub enum Verb {
     #[command(id = "extract")]
     ExtractFile {
         #[arg(short, long)]
-        #[arg(value_parser = Path::from_str)]
+        #[arg(value_parser = Path::try_from_str)]
         path: Path,
         #[arg(short, long)]
         destination: OsPath,
     },
     List {
         #[arg(short, long)]
-        #[arg(value_parser = Path::from_str)]
+        #[arg(value_parser = Path::try_from_str)]
         prefix: Option<Path>,
     },
 }
