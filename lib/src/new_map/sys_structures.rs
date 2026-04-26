@@ -127,7 +127,8 @@ impl Path {
     /// disk.
     ///
     /// Will return `None` if the provided path is invalid. This can be because
-    /// the path is ill-formed, because a single segment is too long.
+    /// the path is ill-formed, or because a single segment is too long to
+    /// actually be encoded on the disk.
     fn from_bytes(input: &[u8]) -> Option<Path> {
         let input = make_input(input);
 
@@ -164,7 +165,7 @@ impl Path {
     }
 
     /// Creates a new Path that appends the given segment to the end of `self`
-    pub(crate) fn join(&self, segment: FixedLenString) -> Path {
+    pub(crate) fn append(&self, segment: FixedLenString) -> Path {
         let mut segments = self.0.clone();
         segments.push(segment);
         Path(segments)
@@ -224,7 +225,6 @@ impl FileTree {
         input.reset_to_start();
 
         let FaultValue(files, faults) = Self::build_tree(map, input)?;
-        //dbg!(&faults);
         Ok(FaultValue(FileTree { files }, faults))
     }
 
@@ -265,7 +265,7 @@ impl FileTree {
 
         while let Some((path, item)) = queue.pop() {
             for child in &item.entries {
-                let new_path = path.join(child.obj_name);
+                let new_path = path.append(child.obj_name);
                 if child.attrs.contains(Attributes::DIR) {
                     let FaultValue(dir, mut cur_faults) = match Self::retrieve_directory(
                         map,
