@@ -4,7 +4,7 @@
 use arrayvec::ArrayVec;
 use winnow::Parser;
 use winnow::binary::{le_u8, le_u16, le_u32};
-use winnow::combinator::{alt, repeat, seq, trace};
+use winnow::combinator::{alt, repeat, trace};
 use winnow::stream::Location;
 
 use super::sys_structures::Path;
@@ -22,7 +22,7 @@ pub(crate) const MAX_SEGMENT_LENGTH: usize = 10;
 pub(crate) const MAX_TITLE_LENGTH: usize = 19;
 
 #[derive(Clone, Copy)]
-struct MagicString([u8; 4]);
+pub(crate) struct MagicString([u8; 4]);
 impl MagicString {
     fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
         alt((b"Hugo", b"Nick"))
@@ -41,20 +41,23 @@ impl std::fmt::Debug for MagicString {
 const SIZE_OF_DIRECTORY: usize = 77;
 #[derive(Debug, Clone)]
 pub struct Directory {
-    pub(crate) header: DirHeader,
+    pub(crate) start_seq_num: u8,
+    pub(crate) start_name: MagicString,
     pub(crate) entries: ArrayVec<DirEntry, SIZE_OF_DIRECTORY>,
-    pub(crate) tail: DirTail,
+    pub(crate) last_mark: u8,
+    pub(crate) reserved: u16,
+    pub(crate) parent: DiscPosition,
+    pub(crate) title: FixedLenString<MAX_TITLE_LENGTH>,
+    pub(crate) name: FixedLenString<MAX_SEGMENT_LENGTH>,
+    pub(crate) end_seq_num: u8,
+    pub(crate) end_name: MagicString,
+    pub(crate) check_byte: u8,
 }
 impl Directory {
     pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
         trace("Directory", |input: &mut InputStream<'a>| {
-            let header = seq! {
-               DirHeader {
-                   start_seq_num: le_u8,
-                   start_name: MagicString::parse
-                }
-            }
-            .parse_next(input)?;
+            let (start_seq_num, start_name) =
+                trace("DirHeader", (le_u8, MagicString::parse)).parse_next(input)?;
 
             let mut results: Vec<_> =
                 repeat(SIZE_OF_DIRECTORY, trace("DirEntry", DirEntry::parse)).parse_next(input)?;
@@ -70,45 +73,42 @@ impl Directory {
                 results.into_iter().map(|FaultValue(e, f)| (e, f)).unzip();
             let mut faults: Vec<_> = faults.into_iter().flatten().collect();
 
-            let tail = seq! {
-                DirTail {
-                    last_mark: le_u8,
-                    reserved: le_u16,
-                    parent: DiscPosition::parse_for_new_map,
-                    title: FixedLenString::<MAX_TITLE_LENGTH>::parse_from_disk,
-                    name: FixedLenString::parse_from_disk,
-                    end_seq_num: le_u8,
-                    end_name: MagicString::parse,
-                    check_byte: le_u8,
-                }
-            }
-            .parse_next(input)?;
+            let last_mark = le_u8.parse_next(input)?;
+            let reserved = le_u16.parse_next(input)?;
+            let parent = DiscPosition::parse_for_new_map.parse_next(input)?;
+            let title = FixedLenString::<MAX_TITLE_LENGTH>::parse_from_disk.parse_next(input)?;
+            let name = FixedLenString::parse_from_disk.parse_next(input)?;
+            let end_seq_num = le_u8.parse_next(input)?;
+            let end_name = MagicString::parse.parse_next(input)?;
+            let check_byte = le_u8.parse_next(input)?;
 
-            if header.start_seq_num != tail.end_seq_num {
+            if start_seq_num != end_seq_num {
                 faults.push(Fault::SequenceNumberMismatch {
-                    path: Path::default(),
-                    start_seq_num: header.start_seq_num,
-                    end_seq_num: tail.end_seq_num,
+                    path: Path::from_segments(vec![name]),
+                    start_seq_num,
+                    end_seq_num,
                 });
             }
 
             Ok(FaultValue(
                 Directory {
-                    header,
+                    start_seq_num,
+                    start_name,
                     entries,
-                    tail,
+                    last_mark,
+                    reserved,
+                    parent,
+                    title,
+                    name,
+                    end_seq_num,
+                    end_name,
+                    check_byte,
                 },
                 faults,
             ))
         })
         .parse_next(input)
     }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct DirHeader {
-    start_seq_num: u8,
-    start_name: MagicString,
 }
 
 #[derive(Debug, Clone)]
@@ -147,18 +147,6 @@ impl DirEntry {
             fault,
         ))
     }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct DirTail {
-    last_mark: u8,
-    reserved: u16,
-    parent: DiscPosition,
-    title: FixedLenString<MAX_TITLE_LENGTH>,
-    name: FixedLenString<MAX_SEGMENT_LENGTH>,
-    end_seq_num: u8,
-    end_name: MagicString,
-    check_byte: u8,
 }
 
 bitflags::bitflags! {
