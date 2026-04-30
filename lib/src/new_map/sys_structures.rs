@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
 
-use serde::Serialize;
 use winnow::Parser;
 use winnow::combinator::{opt, preceded, separated, terminated};
 use winnow::error::{AddContext, TreeError};
@@ -170,6 +169,14 @@ impl Path {
         segments.push(segment);
         Path(segments)
     }
+
+    /// Creates a new Path that prepends the given segment before `self`
+    pub(crate) fn prepend(&self, segment: FixedLenString) -> Path {
+        let mut segments = self.0.clone();
+        segments.insert(0, segment);
+        Path(segments)
+    }
+
     /// Creates a Path directly out of a set of segments
     pub(crate) fn from_segments(segments: Vec<FixedLenString>) -> Path {
         Path(segments)
@@ -183,6 +190,14 @@ impl Path {
     /// character set
     pub fn try_from_str(path: &str) -> Result<Path, String> {
         Path::from_bytes(path.as_bytes()).ok_or(format!("Could not convert '{path}' to ADFS path"))
+    }
+}
+
+impl<'a> Extend<&'a Path> for Path {
+    fn extend<T: IntoIterator<Item = &'a Path>>(&mut self, iter: T) {
+        for p in iter {
+            self.0.extend(p.0.iter().copied());
+        }
     }
 }
 
@@ -258,7 +273,10 @@ impl FileTree {
         faults.iter_mut().for_each(|f| {
             if let Fault::InvalidAttr { path, .. } | Fault::SequenceNumberMismatch { path, .. } = f
             {
-                *path = Path::default();
+                let p = &*path;
+                let mut new_path = Path::default();
+                new_path.extend([p]);
+                *path = new_path;
             }
         });
 
@@ -291,7 +309,10 @@ impl FileTree {
                         if let Fault::InvalidAttr { path, .. }
                         | Fault::SequenceNumberMismatch { path, .. } = f
                         {
-                            *path = new_path.clone()
+                            let p = &*path;
+                            let mut new_path = new_path.clone();
+                            new_path.extend([p].into_iter());
+                            *path = new_path;
                         }
                     });
                     faults.extend(cur_faults);
@@ -330,8 +351,7 @@ impl FileTree {
         let prefix1 = prefix.clone();
         let prefix2 = prefix.clone();
         self.files
-            .iter()
-            .map(|(path, _)| path)
+            .keys()
             .skip_while(move |path| **path < prefix1)
             .take_while(move |path| prefix2.is_prefix(path))
     }
