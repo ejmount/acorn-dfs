@@ -170,6 +170,10 @@ impl Path {
         segments.push(segment);
         Path(segments)
     }
+    /// Creates a Path directly out of a set of segments
+    pub(crate) fn from_segments(segments: Vec<FixedLenString>) -> Path {
+        Path(segments)
+    }
 
     /// Attempts to construct a Path out of a given string that was, e.g.
     /// provided by a user.
