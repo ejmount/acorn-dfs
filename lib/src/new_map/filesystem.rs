@@ -130,7 +130,13 @@ impl DirEntry {
         let exec = trace("exec", le_u32).parse_next(input)?;
         let len = trace("len", le_u32).parse_next(input)?;
         let address = trace("address", DiscPosition::parse_for_new_map).parse_next(input)?;
-        let FaultValue(attrs, fault) = Attributes::parse(input)?;
+        let FaultValue(attrs, mut fault) = Attributes::parse(input)?;
+        fault.iter_mut().for_each(|f| {
+            if let Fault::InvalidAttr { path, .. } = f {
+                dbg!(obj_name);
+                *path = Path::from_segments(vec![obj_name]);
+            }
+        });
 
         Ok(FaultValue(
             DirEntry {
