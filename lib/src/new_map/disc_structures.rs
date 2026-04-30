@@ -190,10 +190,7 @@ impl MapBlock {
         let disc_record = DiscRecord::parse(input)?;
         let params = AllocationParsingParams::new(includes_map, header.free_link, &disc_record);
         let allocations = AllocationMap::parse(input, &params)?;
-        let _unused = take_rest_of_sector(input, disc_record.sector_size_in_bytes())?
-            .iter()
-            .copied()
-            .collect();
+        let _unused = take_rest_of_sector(input, disc_record.sector_size_in_bytes())?.to_vec();
 
         let sector_end = input.checkpoint();
         input.reset(&sector_start);
@@ -234,12 +231,7 @@ impl MapBlock {
     /// https://www.riscos.com/support/developers/prm/filecore.html#72701
     fn calculate_zone_check(zone: &[u8]) -> u8 {
         use std::ops::BitXor;
-        let _sum = zone
-            .iter()
-            .copied()
-            .reduce(|a, b| a.wrapping_add(b))
-            .unwrap();
-        dbg!(_sum);
+
         let mut sum = [0u32; 4];
         for rover in (4..zone.len()).step_by(4).rev() {
             sum[0] += zone[rover] as u32 + (sum[3] >> 8);
@@ -250,15 +242,13 @@ impl MapBlock {
             sum[1] &= 0xFF;
             sum[3] += zone[rover + 3] as u32 + (sum[2] >> 8);
             sum[2] &= 0xFF;
-            dbg!(sum, rover, &zone[rover..rover + 4]);
-            //assert_eq!(sum, [0, 0, 0, 0]);
         }
 
         sum[0] += sum[3] >> 8;
         sum[1] += zone[1] as u32 + (sum[0] >> 8);
         sum[2] += zone[2] as u32 + (sum[1] >> 8);
         sum[3] += zone[3] as u32 + (sum[2] >> 8);
-        return (sum.into_iter().reduce(u32::bitxor).unwrap() & 0xFF) as u8;
+        sum.into_iter().reduce(u32::bitxor).unwrap() as u8
     }
 }
 
