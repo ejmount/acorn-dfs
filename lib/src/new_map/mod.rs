@@ -47,7 +47,7 @@ pub enum Fault {
     UnacceptableSectorSize(u8),
     #[error("Calculated a zone check value of {actual:2X}, but expected {expected:2X}")]
     ZoneCheckFailure { expected: u8, actual: u8 },
-#[error("Map had a cross check failure of {:2X}", .0)]
+    #[error("Map had a cross check failure of {:2X}", .0)]
     CrossCheckFailure(u8),
 }
 
