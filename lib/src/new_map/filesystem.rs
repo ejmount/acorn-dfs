@@ -180,14 +180,14 @@ impl Attributes {
         if STRICT_MODE {
             let pos = input.current_token_start();
             trace("Attributes", le_u8)
-                .map(|a| match Attributes::from_bits(a) {
+                .map(|attr_value| match Attributes::from_bits(attr_value) {
                     Some(a) => a.into(),
                     None => FaultValue(
-                        Attributes::from_bits_retain(a),
+                        Attributes::from_bits_retain(attr_value),
                         vec![Fault::InvalidAttr {
                             location: BitPosition::from_bytes(pos),
                             path: Path::default(),
-                            attr_value: a,
+                            attr_value,
                         }],
                     ),
                 })
