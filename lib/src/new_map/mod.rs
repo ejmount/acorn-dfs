@@ -21,7 +21,7 @@ pub enum Fault {
         origin: BitPosition,
         dest_bit_offset: BitPosition,
     },
-    #[error("File {path} has invalid attribute byte: {attr_value:b}")]
+    #[error("File {path} has invalid attribute byte: {attr_value:b} (at {location:?}")]
     InvalidAttr {
         location: BitPosition,
         path: Path,
