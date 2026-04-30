@@ -56,22 +56,19 @@ impl Directory {
             }
             .parse_next(input)?;
 
-            let (mut entries, mut faults) =
-                repeat(SIZE_OF_DIRECTORY, trace("DirEntry", DirEntry::parse))
-                    .fold(
-                        || (ArrayVec::new(), vec![]),
-                        |(mut entries, mut faults), FaultValue(e, f)| {
-                            entries.push(e);
-                            faults.extend(f);
-                            (entries, faults)
-                        },
-                    )
-                    .parse_next(input)?;
+            let mut results: Vec<_> =
+                repeat(SIZE_OF_DIRECTORY, trace("DirEntry", DirEntry::parse)).parse_next(input)?;
 
-            let first_null_idx = entries.iter().position(|e| e.obj_name.is_empty());
-            if let Some(first_null) = first_null_idx {
-                entries.truncate(first_null);
+            if let Some(first_null) = results
+                .iter()
+                .position(|FaultValue(entry, _)| entry.obj_name.is_empty())
+            {
+                results.truncate(first_null);
             }
+
+            let (entries, faults): (ArrayVec<_, _>, Vec<_>) =
+                results.into_iter().map(|FaultValue(e, f)| (e, f)).unzip();
+            let mut faults: Vec<_> = faults.into_iter().flatten().collect();
 
             let tail = seq! {
                 DirTail {
