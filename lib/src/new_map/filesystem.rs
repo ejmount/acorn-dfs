@@ -179,7 +179,7 @@ impl Attributes {
                     None => FaultValue(
                         Attributes::from_bits_retain(a),
                         vec![Fault::InvalidAttr {
-                            location: BitPosition(pos),
+                            location: BitPosition::from_bytes(pos),
                             path: Path::default(),
                             attr_value: a,
                         }],

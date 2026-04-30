@@ -152,8 +152,17 @@ impl AllocationParsingParams {
 /// A bit-level offset, used for tracking the position of
 /// [`crate::new_map::disc_structures::FragmentBlock`]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BitPosition(pub(crate) usize);
+pub struct BitPosition(usize);
 impl BitPosition {
+    pub(crate) fn from_bits(bits: usize) -> BitPosition {
+        BitPosition(bits)
+    }
+    pub(crate) fn from_bytes(bytes: usize) -> BitPosition {
+        BitPosition(8 * bytes)
+    }
+    pub(crate) fn bits(&self) -> usize {
+        self.0
+    }
     fn split(&self) -> (usize, usize) {
         (self.0 / 8, self.0 % 8)
     }

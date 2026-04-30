@@ -83,9 +83,9 @@ impl NewMap {
         }
 
         let new_map = NewMap {
-                disc_record,
-                blocks,
-            };
+            disc_record,
+            blocks,
+        };
 
         if new_map.cross_check() != EXPECTED_CROSS_CHECK {
             faults.push(Fault::CrossCheckFailure(new_map.cross_check()));
@@ -466,7 +466,7 @@ impl AllocationMap {
         free_link: u16,
     ) -> Result<(), Fault> {
         let free_link_from_zero = 8 + free_link; // Free link value on disc is counting in bits from overall zone offset byte 0x01
-        let free_link_position = BitPosition(free_link_from_zero as usize);
+        let free_link_position = BitPosition::from_bits(free_link_from_zero as usize);
         let head_fragment = fragments
             .get_mut(&free_link_position)
             .ok_or(Fault::InvalidFreeLink(free_link))?;
@@ -479,7 +479,7 @@ impl AllocationMap {
         } = *head_fragment;
 
         while cursor_id != 0 {
-            let dest_bit_offset = BitPosition(cursor_id as _) + cursor_position;
+            let dest_bit_offset = BitPosition::from_bits(cursor_id as _) + cursor_position;
 
             let new_fragment =
                 fragments
@@ -581,7 +581,7 @@ impl FragmentBlock {
     ) -> ModalResult<Self, BitErr<'a>> {
         trace("FragmentBlock", move |input: &mut BitInput<'a>| {
             let idlen = params.fragment_id_length();
-            let position = BitPosition(8 * input.0.current_token_start() + input.1);
+            let position = BitPosition::from_bits(8 * input.0.current_token_start() + input.1);
             let mut id = FragmentId::default();
 
             for n in 0..idlen {
@@ -594,7 +594,7 @@ impl FragmentBlock {
             }
             map_length += 1; // Count the terminating 1 bit
 
-            let position_from_start = position.0 - ALLOCATION_MAP_START_IN_BITS;
+            let position_from_start = position.bits() - ALLOCATION_MAP_START_IN_BITS;
             let disk_start = position_from_start * params.bytes_per_alloc_unit();
             let disk_end = disk_start + map_length * params.bytes_per_alloc_unit();
 
