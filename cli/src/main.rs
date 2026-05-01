@@ -51,7 +51,12 @@ fn main() {
 
     disk.expand_tree().expect("Explode");
     if !disk.faults.is_empty() {
-        panic!("Explode");
+        let l = disk.faults.len();
+        for f in disk.faults {
+            eprintln!("{f}");
+        }
+        panic!("{l}");
+        //panic!("{:#?}", disk.faults);
     }
 
     match args.verb {

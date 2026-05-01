@@ -56,31 +56,49 @@ pub struct Directory {
 impl Directory {
     pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
         trace("Directory", |input: &mut InputStream<'a>| {
-            let (start_seq_num, start_name) =
-                trace("DirHeader", (le_u8, MagicString::parse)).parse_next(input)?;
+            let ((start_seq_num, start_name), start_text) =
+                trace("DirHeader", (le_u8, MagicString::parse))
+                    .with_taken()
+                    .parse_next(input)?;
 
-            let mut results: Vec<_> =
-                repeat(SIZE_OF_DIRECTORY, trace("DirEntry", DirEntry::parse)).parse_next(input)?;
+            let results: Vec<(_, &[u8])> = repeat(
+                SIZE_OF_DIRECTORY,
+                trace("DirEntry", DirEntry::parse.with_taken()),
+            )
+            .parse_next(input)?;
 
-            if let Some(first_null) = results
-                .iter()
-                .position(|FaultValue(entry, _)| entry.obj_name.is_empty())
-            {
-                results.truncate(first_null);
+            let mut entries = ArrayVec::new();
+            let mut faults = vec![];
+            let mut entry_texts = vec![];
+
+            for (FaultValue(e, f), span) in results {
+                if e.obj_name.is_empty() {
+                    break;
+                }
+                entries.push(e);
+                faults.extend(f);
+                entry_texts.push(span);
             }
 
-            let (entries, faults): (ArrayVec<_, _>, Vec<_>) =
-                results.into_iter().map(|FaultValue(e, f)| (e, f)).unzip();
-            let mut faults: Vec<_> = faults.into_iter().flatten().collect();
+            let (fields, tail_text) = (
+                le_u8,
+                le_u16,
+                DiscPosition::parse_for_new_map,
+                FixedLenString::<MAX_TITLE_LENGTH>::parse_from_disk,
+                FixedLenString::parse_from_disk,
+                le_u8,
+                MagicString::parse,
+                le_u8,
+            )
+                .with_taken()
+                .parse_next(input)?;
 
-            let last_mark = le_u8.parse_next(input)?;
-            let reserved = le_u16.parse_next(input)?;
-            let parent = DiscPosition::parse_for_new_map.parse_next(input)?;
-            let title = FixedLenString::<MAX_TITLE_LENGTH>::parse_from_disk.parse_next(input)?;
-            let name = FixedLenString::parse_from_disk.parse_next(input)?;
-            let end_seq_num = le_u8.parse_next(input)?;
-            let end_name = MagicString::parse.parse_next(input)?;
-            let check_byte = le_u8.parse_next(input)?;
+            let (last_mark, reserved, parent, title, name, end_seq_num, end_name, actual_check) =
+                fields;
+
+            let check_byte = Self::compute_checksum(start_text, &entry_texts, tail_text);
+
+            eprintln!("calculated check_byte={check_byte:8b}, actual_check={actual_check:8b}");
 
             if start_seq_num != end_seq_num {
                 faults.push(Fault::SequenceNumberMismatch {
@@ -109,6 +127,44 @@ impl Directory {
         })
         .parse_next(input)
     }
+
+    /// Calculates the check_byte value for a given set of directory sections.
+    ///
+    /// Note that these sections are expected to be discontiguous, because dead
+    /// file entries are not used.
+    ///
+    /// https://www.riscos.com/support/developers/prm/filecore.html#32170
+    fn compute_checksum(start_text: &[u8], entries: &[&[u8]], orig_tail: &[u8]) -> u8 {
+        fn accumulate_word(a: u32, &word: &[u8; 4]) -> u32 {
+            a.rotate_right(13) ^ u32::from_le_bytes(word)
+        }
+        fn accumulate_byte(a: u32, &byte: &u8) -> u32 {
+            a.rotate_right(13) ^ (byte as u32)
+        }
+
+        dbg!(entries.len());
+        let mut data = Vec::from_iter(start_text.iter().copied());
+        for e in entries {
+            data.extend(*e);
+        }
+
+        let (starting_words, trail) = data.as_chunks();
+
+        let accumulation = starting_words.iter().fold(0, accumulate_word);
+        let accumulation = trail.iter().fold(accumulation, accumulate_byte);
+
+        // "The last whole words in the directory are accumulated, except the very last
+        // WORD which is excluded as it contains the check byte."
+        let tail = &orig_tail[..orig_tail.len() - 4];
+
+        let (leading_bytes, tail_words) = tail.as_rchunks();
+        let accumulation = leading_bytes.iter().fold(accumulation, accumulate_byte);
+
+        let accumulation = tail_words.iter().fold(accumulation, accumulate_word);
+
+        let [a, b, c, d] = accumulation.to_le_bytes();
+        a ^ b ^ c ^ d
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -130,7 +186,7 @@ impl DirEntry {
         let FaultValue(attrs, mut fault) = Attributes::parse(input)?;
         fault.iter_mut().for_each(|f| {
             if let Fault::InvalidAttr { path, .. } = f {
-                dbg!(obj_name);
+                //dbg!(obj_name);
                 *path = Path::from_segments(vec![obj_name]);
             }
         });

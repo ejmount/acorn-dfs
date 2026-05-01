@@ -289,6 +289,7 @@ impl FileTree {
             for child in &item.entries {
                 let new_path = path.append(child.obj_name);
                 if child.attrs.contains(Attributes::DIR) {
+                    eprintln!("path = {new_path}");
                     let FaultValue(dir, mut cur_faults) = match Self::retrieve_directory(
                         map,
                         input,
@@ -302,6 +303,7 @@ impl FileTree {
                             continue;
                         }
                     };
+                    eprintln!("end");
                     queue.push((new_path.clone(), dir.clone()));
                     files.insert(new_path.clone(), FileObject::Dir(Box::new(dir)));
                     // Attach paths to fault codes again for general files
