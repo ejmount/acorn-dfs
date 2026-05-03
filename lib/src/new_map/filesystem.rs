@@ -48,47 +48,44 @@ pub struct Directory {
 impl Directory {
     pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
         trace("Directory", |input: &mut InputStream<'a>| {
-            let header = seq! {
-               DirHeader {
-                   start_seq_num: le_u8,
-                   start_name: MagicString::parse
-                }
-            }
+            let (header, start_data) = DirHeader::parse.with_taken().parse_next(input)?;
+
+            let results: Vec<_> = repeat(
+                SIZE_OF_DIRECTORY,
+                trace("DirEntry", DirEntry::parse.with_taken()),
+            )
             .parse_next(input)?;
 
-            let mut results: Vec<_> =
-                repeat(SIZE_OF_DIRECTORY, trace("DirEntry", DirEntry::parse)).parse_next(input)?;
+            let (tail, tail_data) = DirTail::parse.with_taken().parse_next(input)?;
 
-            if let Some(first_null) = results
-                .iter()
-                .position(|FaultValue(entry, _)| entry.obj_name.is_empty())
-            {
-                results.truncate(first_null);
-            }
+            let mut entries = ArrayVec::new();
+            let mut faults = vec![];
+            let mut entry_data = vec![];
 
-            let (entries, faults): (ArrayVec<_, _>, Vec<_>) =
-                results.into_iter().map(|FaultValue(e, f)| (e, f)).unzip();
-            let mut faults: Vec<_> = faults.into_iter().flatten().collect();
-
-            let tail = seq! {
-                DirTail {
-                    last_mark: le_u8,
-                    reserved: le_u16,
-                    parent: DiscPosition::parse_for_new_map,
-                    title: FixedLenString::<MAX_TITLE_LENGTH>::parse_from_disk,
-                    name: FixedLenString::parse_from_disk,
-                    end_seq_num: le_u8,
-                    end_name: MagicString::parse,
-                    check_byte: le_u8,
+            for (FaultValue(e, f), span) in results {
+                if e.obj_name.is_empty() {
+                    break;
                 }
+                entries.push(e);
+                faults.extend(f);
+                entry_data.push(span);
             }
-            .parse_next(input)?;
+
+            let check_byte = Self::compute_checksum(start_data, &entry_data, tail_data);
 
             if header.start_seq_num != tail.end_seq_num {
                 faults.push(Fault::SequenceNumberMismatch {
                     path: Path::default(),
                     start_seq_num: header.start_seq_num,
                     end_seq_num: tail.end_seq_num,
+                });
+            }
+
+            if check_byte != tail.check_byte {
+                faults.push(Fault::CheckByteFailure {
+                    path: Path::from_segments(vec![tail.name]),
+                    expected: tail.check_byte,
+                    actual: check_byte,
                 });
             }
 
@@ -103,12 +100,61 @@ impl Directory {
         })
         .parse_next(input)
     }
+
+    fn compute_checksum(start_data: &[u8], entries: &[&[u8]], tail_data: &[u8]) -> u8 {
+        fn accumulate_word(a: u32, &word: &[u8; 4]) -> u32 {
+            a.rotate_right(13) ^ u32::from_le_bytes(word)
+        }
+        fn accumulate_byte(a: u32, &byte: &u8) -> u32 {
+            a.rotate_right(13) ^ (byte as u32)
+        }
+
+        let mut data = Vec::from_iter(start_data.iter().copied());
+        for e in entries {
+            data.extend(*e);
+        }
+
+        let (starting_words, trail) = data.as_chunks();
+
+        let accumulation = starting_words.iter().fold(0, accumulate_word);
+        let accumulation = trail.iter().fold(accumulation, accumulate_byte);
+
+        // "The last whole words in the directory are accumulated, except the very last
+        // WORD which is excluded as it contains the check byte."
+        //
+        // However, the PRM seems to miss that the leading zero byte is *not* included
+        // in the checksum calculation specified here:
+        // https://gitlab.riscosopen.org/RiscOS/Sources/FileSys/FileCore/-/blob/master/s/FileCore25#L1287
+        let tail = &tail_data[1..tail_data.len() - 4];
+
+        let (leading_bytes, tail_words) = tail.as_rchunks();
+        let accumulation = leading_bytes.iter().fold(accumulation, accumulate_byte);
+
+        let accumulation = tail_words.iter().fold(accumulation, accumulate_word);
+
+        let [a, b, c, d] = accumulation.to_le_bytes();
+        a ^ b ^ c ^ d
+    }
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct DirHeader {
     start_seq_num: u8,
     start_name: MagicString,
+}
+impl DirHeader {
+    fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, DirHeader> {
+        trace(
+            "DirHeader",
+            seq! {
+               DirHeader {
+                   start_seq_num: le_u8,
+                   start_name: MagicString::parse
+                }
+            },
+        )
+        .parse_next(input)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -159,6 +205,26 @@ pub(crate) struct DirTail {
     end_seq_num: u8,
     end_name: MagicString,
     check_byte: u8,
+}
+impl DirTail {
+    fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, DirTail> {
+        trace(
+            "DirTail",
+            seq! {
+                DirTail {
+                    last_mark: le_u8,
+                    reserved: le_u16,
+                    parent: DiscPosition::parse_for_new_map,
+                    title: FixedLenString::<MAX_TITLE_LENGTH>::parse_from_disk,
+                    name: FixedLenString::parse_from_disk,
+                    end_seq_num: le_u8,
+                    end_name: MagicString::parse,
+                    check_byte: le_u8,
+                }
+            },
+        )
+        .parse_next(input)
+    }
 }
 
 bitflags::bitflags! {

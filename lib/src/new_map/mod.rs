@@ -12,7 +12,7 @@ const STRICT_MODE: bool = true;
 
 #[derive(Error, Debug, Clone)]
 pub enum Fault {
-    #[error("Free link value 0x{0:04x} did not point at valid fragment")]
+    #[error("Free link value 0x{0:04X} did not point at valid fragment")]
     InvalidFreeLink(u16),
     #[error(
         "Free fragment block at offset {origin:?} bits points to offset {dest_bit_offset:?} bits which does not contain a fragment"
@@ -21,7 +21,7 @@ pub enum Fault {
         origin: BitPosition,
         dest_bit_offset: BitPosition,
     },
-    #[error("File {path} has invalid attribute byte: {attr_value:b} (at {location:?})")]
+    #[error("File {path} has invalid attribute byte: {attr_value:08b} (at {location:?})")]
     InvalidAttr {
         location: BitPosition,
         path: Path,
@@ -36,7 +36,7 @@ pub enum Fault {
     MagicStringFailure([u8; 4]),
 
     #[error(
-        "Directory {path} began with sequence number 0x{start_seq_num:X} but ended with 0x{end_seq_num:X}"
+        "Directory {path} began with sequence number 0x{start_seq_num:02X} but ended with 0x{end_seq_num:02X}"
     )]
     SequenceNumberMismatch {
         path: Path,
@@ -45,10 +45,18 @@ pub enum Fault {
     },
     #[error("Detected sector size ({}) was too big or small to be plausible", 2usize.pow(*.0 as _))]
     UnacceptableSectorSize(u8),
-    #[error("Calculated a zone check value of {actual:2X}, but expected {expected:2X}")]
+    #[error("Calculated a zone check value of 0x{actual:02X}, but expected 0x{expected:02X}")]
     ZoneCheckFailure { expected: u8, actual: u8 },
-    #[error("Map had a cross check failure of {:2X}", .0)]
+    #[error("Map has a cross check value of 0x{:02X} instead of 0xFF", .0)]
     CrossCheckFailure(u8),
+    #[error(
+        "Directory {path} has a check_byte value of 0x{expected:02X} but was calculated as 0x{actual:02X}"
+    )]
+    CheckByteFailure {
+        path: Path,
+        expected: u8,
+        actual: u8,
+    },
 }
 
 #[derive(Error, Debug, Clone)]
