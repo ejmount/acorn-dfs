@@ -4,8 +4,9 @@
 use arrayvec::ArrayVec;
 use winnow::Parser;
 use winnow::binary::{le_u8, le_u16, le_u32};
-use winnow::combinator::{alt, repeat, seq, trace};
+use winnow::combinator::{repeat, seq, trace};
 use winnow::stream::Location;
+use winnow::token::take;
 
 use super::sys_structures::Path;
 use super::util::{
@@ -21,21 +22,16 @@ use super::{Fault, FaultValue, STRICT_MODE};
 pub(crate) const MAX_SEGMENT_LENGTH: usize = 10;
 pub(crate) const MAX_TITLE_LENGTH: usize = 19;
 
-#[derive(Clone, Copy)]
-struct MagicString([u8; 4]);
-impl MagicString {
-    fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
-        alt((b"Hugo", b"Nick"))
-            .context(Fault::MagicStringFailure(*input.first_chunk().unwrap()))
-            .parse_next(input)
-            .map(|data| MagicString(*data.first_chunk().unwrap()))
-    }
-}
-impl std::fmt::Debug for MagicString {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // A MagicString being successfully constructed means its valid UTF8
-        write!(f, "MagicString({})", str::from_utf8(&self.0).unwrap())
-    }
+fn parse_magic_string<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, ()> {
+    take(4usize)
+        .try_map(|b: &[u8]| {
+            if b == b"Hugo" || b == b"Nick" {
+                Ok(())
+            } else {
+                Err(Fault::MagicStringFailure(*b.first_chunk().unwrap()))
+            }
+        })
+        .parse_next(input)
 }
 
 const SIZE_OF_DIRECTORY: usize = 77;
@@ -140,7 +136,6 @@ impl Directory {
 #[derive(Debug, Clone)]
 pub(crate) struct DirHeader {
     start_seq_num: u8,
-    start_name: MagicString,
 }
 impl DirHeader {
     fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, DirHeader> {
@@ -149,7 +144,7 @@ impl DirHeader {
             seq! {
                DirHeader {
                    start_seq_num: le_u8,
-                   start_name: MagicString::parse
+                   _: parse_magic_string,
                 }
             },
         )
@@ -198,12 +193,10 @@ impl DirEntry {
 #[derive(Debug, Clone)]
 pub(crate) struct DirTail {
     last_mark: u8,
-    reserved: u16,
     parent: DiscPosition,
     title: FixedLenString<MAX_TITLE_LENGTH>,
     name: FixedLenString<MAX_SEGMENT_LENGTH>,
     end_seq_num: u8,
-    end_name: MagicString,
     check_byte: u8,
 }
 impl DirTail {
@@ -213,12 +206,12 @@ impl DirTail {
             seq! {
                 DirTail {
                     last_mark: le_u8,
-                    reserved: le_u16,
+                    _: le_u16,
                     parent: DiscPosition::parse_for_new_map,
                     title: FixedLenString::<MAX_TITLE_LENGTH>::parse_from_disk,
                     name: FixedLenString::parse_from_disk,
                     end_seq_num: le_u8,
-                    end_name: MagicString::parse,
+                    _: parse_magic_string,
                     check_byte: le_u8,
                 }
             },
