@@ -423,7 +423,8 @@ impl AllocationMap {
                 })
                 .parse_next(input)?;
 
-                // ...and only after that, flag the ones that are part of the free list
+                // ...and only after that, flag the ones that are part of the free list.
+                // (A free link of 0 would mean no free blocks.)
                 if params.free_link() != 0 {
                     Self::walk_free_chain(&mut fragments, params.free_link())
                         .map_err(|e| ErrMode::from_external_error(input, e))?;
@@ -499,7 +500,7 @@ impl AllocationMap {
                 .or_default()
                 .push(block.disk_region());
         }
-        for (&fid, v) in &mut fragment_regions {
+        for (&fragment_id, v) in &mut fragment_regions {
             // The regions need to be put in the order that results from searching for
             // regions belonging to disc object F starting from the zone
             // numbered `(F / ids per zone)` and wrapping around the end of the
@@ -507,7 +508,7 @@ impl AllocationMap {
             //
             // https://www.riscos.com/support/developers/prm/filecore.html#32170
             v.sort_by_key(|id| {
-                let start = params.search_starting_point(fid);
+                let start = params.search_starting_point(fragment_id);
                 id.start.wrapping_sub(start) % params.total_disk_size
             });
         }

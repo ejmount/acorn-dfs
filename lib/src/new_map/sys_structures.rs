@@ -270,7 +270,7 @@ impl FileTree {
 
         // Attach paths to faults if any were raised
         // This specifically applies to any in the root directory
-        faults.iter_mut().for_each(|f| {
+        for f in faults.iter_mut() {
             if let Fault::InvalidAttr { path, .. } | Fault::SequenceNumberMismatch { path, .. } = f
             {
                 let p = &*path;
@@ -278,7 +278,7 @@ impl FileTree {
                 new_path.extend([p]);
                 *path = new_path;
             }
-        });
+        }
 
         let mut queue = vec![(Path::default(), root.clone())];
 
@@ -305,7 +305,7 @@ impl FileTree {
                     queue.push((new_path.clone(), dir.clone()));
                     files.insert(new_path.clone(), FileObject::Dir(Box::new(dir)));
                     // Attach paths to fault codes again for general files
-                    cur_faults.iter_mut().for_each(|f| {
+                    for f in cur_faults.iter_mut() {
                         if let Fault::InvalidAttr { path, .. }
                         | Fault::SequenceNumberMismatch { path, .. } = f
                         {
@@ -314,7 +314,7 @@ impl FileTree {
                             new_path.extend([p].into_iter());
                             *path = new_path;
                         }
-                    });
+                    }
                     faults.extend(cur_faults);
                 } else {
                     files.insert(new_path, FileObject::File(child.clone()));
