@@ -191,6 +191,17 @@ impl Path {
     pub fn try_from_str(path: &str) -> Result<Path, String> {
         Path::from_bytes(path.as_bytes()).ok_or(format!("Could not convert '{path}' to ADFS path"))
     }
+
+    /// The path as a sequence of variable-length byte-strings.
+    ///
+    /// The segments are trimmed to only include valid characters.
+    pub fn to_byte_segments(&self) -> Vec<Vec<u8>> {
+        let mut output = vec![];
+        for segment in &self.0 {
+            output.push(segment.valid_range().to_vec());
+        }
+        output
+    }
 }
 
 impl<'a> Extend<&'a Path> for Path {
@@ -389,6 +400,15 @@ mod test {
             "$.Utilities.!TeleRoute.Templates"
         );
         assert_eq!(Path::from_bytes(b"$.Foo\0o.Bar"), None);
+    }
+
+    #[test]
+    fn path_as_bytes() {
+        let p = Path::from_bytes(b"$.Utilities.!TeleRoute.Templates").unwrap();
+        assert_eq!(
+            p.to_byte_segments(),
+            vec![b"Utilities" as &[u8], b"!TeleRoute", b"Templates"]
+        );
     }
 
     #[test]
