@@ -419,6 +419,7 @@ mod test {
             ("$.A", "$.AB", true),
             ("$.A", "$.A.B", true),
             ("$.B", "$.A", false),
+            ("$.B.A", "$.A.B", false),
         ];
 
         for (prefix, haystack, expected) in cases {
