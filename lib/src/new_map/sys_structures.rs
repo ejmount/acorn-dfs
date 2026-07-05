@@ -309,7 +309,7 @@ impl FileTree {
                         Ok(dir) => dir,
                         Err(_) => {
                             // TODO: Raise a proper fault here
-                            eprintln!("Failed");
+                            eprintln!("Failed to retrieve directory {new_path}");
                             continue;
                         }
                     };
