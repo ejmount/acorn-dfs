@@ -117,12 +117,16 @@ impl NewMap {
         let byte_offset: usize = sector_number as usize * sector_size;
 
         let Range { start, end } = fragment.disk_region();
+        let start = start + byte_offset;
         let end = end.min(start + dir_entry.len as usize);
 
-        Some(Range {
-            start: start + byte_offset,
-            end,
-        })
+        debug_assert!(
+            (end - start) == dir_entry.len as usize,
+            "Region ({start}..{end}) does not match file length {}",
+            dir_entry.len
+        );
+
+        Some(Range { start, end })
     }
 
     pub fn cross_check(&self) -> u8 {
