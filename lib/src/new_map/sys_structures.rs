@@ -116,8 +116,8 @@ impl FormatE {
 pub struct Path(Vec<FixedLenString>);
 
 impl Path {
-    const ROOT_SYMBOL: u8 = b'$';
-    const DIR_SEPARATOR: u8 = b'.';
+    pub const ROOT_SYMBOL: u8 = b'$';
+    pub const DIR_SEPARATOR: u8 = b'.';
     /// Create a path from a byte-string representing the entire path.
     ///
     /// Paths do not exist in this form anywhere within ADFS disk structures, so
