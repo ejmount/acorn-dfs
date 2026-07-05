@@ -63,7 +63,7 @@ pub struct NewMap {
     /// On disk, this is stored inside the first MapBlock, but is pulled out
     /// here so Map handling is more consistent
     disc_record: DiscRecord,
-    /// Trailing blocks. This may be empty if there is only one zone.
+    /// Zone blocks.
     blocks: Vec<MapBlock>,
 }
 
@@ -200,7 +200,6 @@ impl MapBlock {
             .unwrap_or_else(|_: EmptyError| unreachable!(" should've already succedeed"));
 
         let actual_zone_check = MapBlock::calculate_zone_check(sector_contents);
-        dbg!(actual_zone_check, header.zone_check);
         input.reset(&sector_end);
 
         let faults = if actual_zone_check != header.zone_check {
