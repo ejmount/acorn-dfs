@@ -1,0 +1,42 @@
+---
+source: lib/tests/image_assertions.rs
+expression: entries
+---
+{
+    Path(
+        [
+            FixedLenString("hostfs/txt"),
+        ],
+    ): DirEntry {
+        obj_name: FixedLenString("hostfs/txt"),
+        load: 4294967130,
+        exec: 3114055960,
+        len: 104,
+        address: DiscPosition {
+            val: 1025,
+            fragment: 4,
+            sector no: 0,
+        },
+        attrs: Attributes(
+            READ | WRITE,
+        ),
+    },
+    Path(
+        [
+            FixedLenString("qtm149/txt"),
+        ],
+    ): DirEntry {
+        obj_name: FixedLenString("qtm149/txt"),
+        load: 4294967131,
+        exec: 27306364,
+        len: 4634,
+        address: DiscPosition {
+            val: 768,
+            fragment: 3,
+            sector no: 0,
+        },
+        attrs: Attributes(
+            READ | WRITE,
+        ),
+    },
+}

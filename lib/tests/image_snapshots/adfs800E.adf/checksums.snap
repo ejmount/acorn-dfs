@@ -1,0 +1,16 @@
+---
+source: lib/tests/image_assertions.rs
+expression: checksums
+---
+{
+    Path(
+        [
+            FixedLenString("hostfs/txt"),
+        ],
+    ): 4126394849,
+    Path(
+        [
+            FixedLenString("qtm149/txt"),
+        ],
+    ): 1035066180,
+}
