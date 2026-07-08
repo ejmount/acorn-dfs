@@ -30,11 +30,10 @@ fn calculate_checksum(contents: &[u8]) -> u32 {
 fn assert_format_e(path: &Path) {
     let disk = load_format_e(path);
 
-    let tree = disk.tree.as_ref().unwrap();
     let mut entries = BTreeMap::new();
     let mut checksums = BTreeMap::new();
 
-    for f in tree.keys() {
+    for f in disk.tree.keys() {
         let Ok((entry, contents)) = disk.get_file(f) else {
             continue;
         };

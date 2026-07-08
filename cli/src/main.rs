@@ -79,8 +79,7 @@ fn main() -> Result<(), std::io::Error> {
             println!("{}", disk.get_map_json());
         }
         Verb::List { prefix } => {
-            let tree = disk.tree.unwrap();
-            for k in tree.keys_by_prefix(prefix.unwrap_or_default()) {
+            for k in disk.keys_by_prefix(prefix.unwrap_or_default()) {
                 println!("{k}");
             }
         }
@@ -154,7 +153,7 @@ fn convert_path_to_os(p: Path) -> OsPath {
 }
 
 fn extract_disk(disk: &FormatE, destination: OsPath) {
-    let tree = disk.tree.as_ref().unwrap();
+    let tree = &disk.tree;
 
     for path in tree.keys() {
         let Ok((entry, contents)) = disk.get_file(path) else {

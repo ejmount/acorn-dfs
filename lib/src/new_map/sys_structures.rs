@@ -1,7 +1,7 @@
-/// Structure that represent bookkeeping that the program is doing but which
+/// Structures that represent bookkeeping that the program is doing but which
 /// does not map immediately to disk structures
 use std::collections::BTreeMap;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 
 use winnow::Parser;
 use winnow::combinator::{opt, preceded, separated, terminated};
@@ -20,6 +20,16 @@ use super::util::{
 };
 use super::{Fault, FaultValue, IoError};
 
+/// An entry for the [`FileTree`], representing either a directory or a file.
+///
+/// This does not correspond neatly to disk structures, where a [`DirEntry`]
+/// representing a file only exists as a field inside a [`Directory`]
+#[derive(Debug, Clone)]
+pub enum FileObject {
+    Dir(Box<Directory>),
+    File(DirEntry),
+}
+
 /// Represents the parsed contents of a ADFS format-E disk.
 ///
 /// The data between the fields of this structure are slightly redundant - the
@@ -35,7 +45,7 @@ pub struct FormatE {
     pub map: NewMap,
     /// A summarised copy of the filesystem tree - this does not directly
     /// correspond to any disk contents.
-    pub tree: Option<FileTree>,
+    pub tree: BTreeMap<Path, FileObject>,
     /// A list of non-fatal faults encountered while parsing the disk data. This
     /// includes validation failures, etc.
     pub faults: Vec<Fault>,
@@ -58,30 +68,133 @@ impl FormatE {
         let mut input = make_input(bytes);
         let FaultValue(map, faults) = NewMap::parse(&mut input, 1)?;
 
-        Ok(FormatE {
+        let mut f = FormatE {
             image: bytes.to_vec(),
             map,
-            tree: None,
+            tree: BTreeMap::default(),
             faults,
-        })
+        };
+        f.expand_tree();
+
+        Ok(f)
     }
 
     /// Reads the directory heirachy and populates the `tree` field of the
     /// structure.
     pub fn expand_tree(&mut self) -> Result<(), TreeError<(), Fault>> {
-        let input = make_input(&self.image);
-        let FaultValue(tree, faults) = FileTree::new(&self.map, input)
+        let FaultValue(tree, faults) = self
+            .build_tree()
             .map_err(|e| e.into_inner().unwrap().map_input(|_| ()))?;
-        self.tree = Some(tree);
+        self.tree = tree;
         self.faults.extend(faults);
         Ok(())
     }
 
+    pub fn get_map_json(&self) -> String {
+        serde_json::to_string_pretty(&self.map).unwrap()
+    }
+
+    fn populate_path(&self, path: Path) {}
+
+    fn build_tree<'a>(&'a self) -> FaultableResult<'a, BTreeMap<Path, FileObject>> {
+        let input = make_input(&self.image);
+        let dr = self.map.get_disc_record();
+        let root_link = dr.root_dir;
+        let FaultValue(root, mut faults) = self
+            .retrieve_directory(input, root_link, dr.sector_size_in_bytes())
+            .map_err(|e| {
+                let c = input.checkpoint();
+                e.add_context(
+                    &input,
+                    &c,
+                    Fault::InvalidRoot {
+                        root_link,
+                        sector_size: dr.sector_size_in_bytes(),
+                    },
+                )
+            })?;
+
+        // Attach paths to faults if any were raised
+        // This specifically applies to any in the root directory
+        for f in faults.iter_mut() {
+            if let Fault::InvalidAttr { path, .. } | Fault::SequenceNumberMismatch { path, .. } = f
+            {
+                let p = &*path;
+                let mut new_path = Path::default();
+                new_path.extend([p]);
+                *path = new_path;
+            }
+        }
+
+        let mut queue = vec![(Path::default(), root.clone())];
+
+        let mut files = BTreeMap::new();
+        files.insert(Path::default(), FileObject::Dir(Box::new(root)));
+
+        while let Some((path, item)) = queue.pop() {
+            for child in &item.entries {
+                let new_path = path.append(child.obj_name);
+                if child.attrs.contains(Attributes::DIR) {
+                    let FaultValue(dir, mut cur_faults) = match self.retrieve_directory(
+                        input,
+                        child.address,
+                        dr.sector_size_in_bytes(),
+                    ) {
+                        Ok(dir) => dir,
+                        Err(_) => {
+                            // TODO: Raise a proper fault here
+                            eprintln!("Failed to retrieve directory {new_path}");
+                            continue;
+                        }
+                    };
+                    queue.push((new_path.clone(), dir.clone()));
+                    files.insert(new_path.clone(), FileObject::Dir(Box::new(dir)));
+                    // Attach paths to fault codes again for general files
+                    for f in cur_faults.iter_mut() {
+                        if let Fault::InvalidAttr { path, .. }
+                        | Fault::SequenceNumberMismatch { path, .. } = f
+                        {
+                            let p = &*path;
+                            let mut new_path = new_path.clone();
+                            new_path.extend([p].into_iter());
+                            *path = new_path;
+                        }
+                    }
+                    faults.extend(cur_faults);
+                } else {
+                    files.insert(new_path, FileObject::File(child.clone()));
+                }
+            }
+        }
+
+        Ok(FaultValue(files, faults))
+    }
+
+    /// Retrieve the section of the disk that corresponds to the given address
+    /// and parse it as [`Directory`] object.
+    fn retrieve_directory<'a>(
+        &'a self,
+        input: InputStream<'a>,
+        addr: DiscPosition,
+        sector_size: usize,
+    ) -> FaultableResult<'a, Directory> {
+        let block = self
+            .map
+            .get_allocation(0)
+            .get_fragment(addr.fragment())
+            .unwrap();
+        let entry_region = block.disk_region();
+
+        let mut cursor = input;
+        let offset = addr.sector_idx() as usize * sector_size;
+        cursor.next_slice(entry_region.start + offset);
+
+        Directory::parse(&mut cursor)
+    }
     /// Gets the metadata and contents of a given path
     pub fn get_file(&self, path: &Path) -> Result<(DirEntry, Vec<u8>), IoError> {
-        let tree = self.tree.as_ref().expect("Must call expand_tree first");
-        let fileobject = tree
-            .files
+        let fileobject = self
+            .tree
             .get(path)
             .ok_or(IoError::MissingTarget(path.clone()))?;
 
@@ -101,8 +214,17 @@ impl FormatE {
         Ok((dir_entry.clone(), contents))
     }
 
-    pub fn get_map_json(&self) -> String {
-        serde_json::to_string_pretty(&self.map).unwrap()
+    pub fn keys(&self) -> impl Iterator<Item = &'_ Path> {
+        self.tree.keys()
+    }
+
+    pub fn keys_by_prefix(&self, prefix: Path) -> impl Iterator<Item = &'_ Path> {
+        let prefix1 = prefix.clone();
+        let prefix2 = prefix.clone();
+        self.tree
+            .keys()
+            .skip_while(move |path| **path < prefix1)
+            .take_while(move |path| prefix2.is_prefix(path))
     }
 }
 
@@ -219,153 +341,6 @@ impl<'a> Extend<&'a Path> for Path {
         for p in iter {
             self.0.extend(p.0.iter().copied());
         }
-    }
-}
-
-/// An entry for the [`FileTree`], representing either a directory or a file.
-///
-/// This does not correspond neatly to disk structures, where a [`DirEntry`]
-/// representing a file only exists as a field inside a [`Directory`]
-#[derive(Debug, Clone)]
-pub enum FileObject {
-    Dir(Box<Directory>),
-    File(DirEntry),
-}
-
-/// A list of every file and directory entry on the disk
-#[derive(Debug, Clone)]
-pub struct FileTree {
-    /// A BTree ordered by Path lets us pull entries from a subdirectory easily
-    files: std::collections::BTreeMap<Path, FileObject>,
-}
-
-impl Display for FileTree {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (k, v) in &self.files {
-            writeln!(f, "{}: {:#?}", k, v)?;
-        }
-        Ok(())
-    }
-}
-
-impl FileTree {
-    /// Produce the entire FileTree
-    ///
-    /// Expects the entire disk image as input
-    fn new<'a>(map: &NewMap, mut input: InputStream<'a>) -> FaultableResult<'a, FileTree> {
-        input.reset_to_start();
-
-        let FaultValue(files, faults) = Self::build_tree(map, input)?;
-        Ok(FaultValue(FileTree { files }, faults))
-    }
-
-    fn build_tree<'a>(
-        map: &NewMap,
-        input: InputStream<'a>,
-    ) -> FaultableResult<'a, BTreeMap<Path, FileObject>> {
-        let dr = map.get_disc_record();
-        let root_link = dr.root_dir;
-        let FaultValue(root, mut faults) =
-            Self::retrieve_directory(map, input, root_link, dr.sector_size_in_bytes()).map_err(
-                |e| {
-                    let c = input.checkpoint();
-                    e.add_context(
-                        &input,
-                        &c,
-                        Fault::InvalidRoot {
-                            root_link,
-                            sector_size: dr.sector_size_in_bytes(),
-                        },
-                    )
-                },
-            )?;
-
-        // Attach paths to faults if any were raised
-        // This specifically applies to any in the root directory
-        for f in faults.iter_mut() {
-            if let Fault::InvalidAttr { path, .. } | Fault::SequenceNumberMismatch { path, .. } = f
-            {
-                let p = &*path;
-                let mut new_path = Path::default();
-                new_path.extend([p]);
-                *path = new_path;
-            }
-        }
-
-        let mut queue = vec![(Path::default(), root.clone())];
-
-        let mut files = BTreeMap::new();
-        files.insert(Path::default(), FileObject::Dir(Box::new(root)));
-
-        while let Some((path, item)) = queue.pop() {
-            for child in &item.entries {
-                let new_path = path.append(child.obj_name);
-                if child.attrs.contains(Attributes::DIR) {
-                    let FaultValue(dir, mut cur_faults) = match Self::retrieve_directory(
-                        map,
-                        input,
-                        child.address,
-                        dr.sector_size_in_bytes(),
-                    ) {
-                        Ok(dir) => dir,
-                        Err(_) => {
-                            // TODO: Raise a proper fault here
-                            eprintln!("Failed to retrieve directory {new_path}");
-                            continue;
-                        }
-                    };
-                    queue.push((new_path.clone(), dir.clone()));
-                    files.insert(new_path.clone(), FileObject::Dir(Box::new(dir)));
-                    // Attach paths to fault codes again for general files
-                    for f in cur_faults.iter_mut() {
-                        if let Fault::InvalidAttr { path, .. }
-                        | Fault::SequenceNumberMismatch { path, .. } = f
-                        {
-                            let p = &*path;
-                            let mut new_path = new_path.clone();
-                            new_path.extend([p].into_iter());
-                            *path = new_path;
-                        }
-                    }
-                    faults.extend(cur_faults);
-                } else {
-                    files.insert(new_path, FileObject::File(child.clone()));
-                }
-            }
-        }
-
-        Ok(FaultValue(files, faults))
-    }
-
-    /// Retrieve the section of the disk that corresponds to the given address
-    /// and parse it as [`Directory`] object.
-    fn retrieve_directory<'a>(
-        map: &NewMap,
-        input: InputStream<'a>,
-        addr: DiscPosition,
-        sector_size: usize,
-    ) -> FaultableResult<'a, Directory> {
-        let block = map.get_allocation(0).get_fragment(addr.fragment()).unwrap();
-        let entry_region = block.disk_region();
-
-        let mut cursor = input;
-        let offset = addr.sector_idx() as usize * sector_size;
-        cursor.next_slice(entry_region.start + offset);
-
-        Directory::parse(&mut cursor)
-    }
-
-    pub fn keys(&self) -> impl Iterator<Item = &'_ Path> {
-        self.files.keys()
-    }
-
-    pub fn keys_by_prefix(&self, prefix: Path) -> impl Iterator<Item = &'_ Path> {
-        let prefix1 = prefix.clone();
-        let prefix2 = prefix.clone();
-        self.files
-            .keys()
-            .skip_while(move |path| **path < prefix1)
-            .take_while(move |path| prefix2.is_prefix(path))
     }
 }
 
