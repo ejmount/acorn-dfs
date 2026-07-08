@@ -191,7 +191,6 @@ impl DirEntry {
 
 #[derive(Debug, Clone)]
 pub(crate) struct DirTail {
-    last_mark: u8,
     parent: DiscPosition,
     title: FixedLenString<MAX_TITLE_LENGTH>,
     name: FixedLenString<MAX_SEGMENT_LENGTH>,
@@ -204,8 +203,8 @@ impl DirTail {
             "DirTail",
             seq! {
                 DirTail {
-                    last_mark: le_u8,
-                    _: le_u16,
+                    _: b'\0', // NewDirLastMark - must be 0
+                    _: b"\0\0", // Reserved - must be 0
                     parent: DiscPosition::parse_for_new_map,
                     title: FixedLenString::<MAX_TITLE_LENGTH>::parse_from_disk,
                     name: FixedLenString::parse_from_disk,
