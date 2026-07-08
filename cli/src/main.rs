@@ -1,10 +1,12 @@
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
+use std::ops::Deref;
 use std::path::PathBuf as OsPath;
 
 use acorn_dfs::new_map::Path;
 use acorn_dfs::new_map::filesystem::DirEntry;
 use acorn_dfs::new_map::sys_structures::FormatE;
 use clap::Parser;
+use mmap_io::MemoryMappedFile;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -36,13 +38,29 @@ pub enum Verb {
     },
 }
 
-fn main() {
+enum DataSource {
+    Mmap(MemoryMappedFile),
+    Vec(Vec<u8>),
+}
+
+impl Deref for DataSource {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Mmap(memory_mapped_file) => memory_mapped_file
+                .as_slice_bytes(0, memory_mapped_file.len())
+                .unwrap(),
+            Self::Vec(items) => &items[..],
+        }
+    }
+}
+
+fn main() -> Result<(), std::io::Error> {
     let args = Args::parse();
 
-    let contents = match std::fs::read(&args.image_path) {
-        Ok(contents) => contents,
-        Err(err) => panic!("Could not read {:?}: {}", args.image_path, err),
-    };
+    let src = read_file(&args.image_path)?;
+
+    let contents = src;
 
     let maybe_disk = FormatE::parse(&contents);
 
@@ -79,7 +97,18 @@ fn main() {
         } => {
             extract_disk(&disk, destination);
         }
-    }
+    };
+    Ok(())
+}
+
+fn read_file(path: &OsStr) -> Result<DataSource, std::io::Error> {
+    let src = match MemoryMappedFile::open_ro(path) {
+        Ok(f) => DataSource::Mmap(f),
+        Err(mmap_io::MmapIoError::Io(error)) => return Err(error),
+        Err(_) => std::fs::read(path).map(DataSource::Vec)?,
+    };
+
+    Ok(src)
 }
 
 fn write_file_plus_metadata(
