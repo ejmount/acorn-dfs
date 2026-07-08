@@ -171,7 +171,6 @@ impl DirEntry {
         let FaultValue(attrs, mut fault) = Attributes::parse(input)?;
         fault.iter_mut().for_each(|f| {
             if let Fault::InvalidAttr { path, .. } = f {
-                dbg!(obj_name);
                 *path = Path::from_segments(vec![obj_name]);
             }
         });

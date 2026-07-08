@@ -116,8 +116,6 @@ fn write_file_plus_metadata(
     entry: &DirEntry,
     contents: Vec<u8>,
 ) -> Result<(), std::io::Error> {
-    dbg!(&destination);
-
     let mut folder = destination.clone();
     folder.pop();
 
@@ -157,8 +155,6 @@ fn convert_path_to_os(p: Path) -> OsPath {
 
 fn extract_disk(disk: &FormatE, destination: OsPath) {
     let tree = disk.tree.as_ref().unwrap();
-    let m = disk.get_map_json();
-    eprintln!("{m}");
 
     for path in tree.keys() {
         let Ok((entry, contents)) = disk.get_file(path) else {
