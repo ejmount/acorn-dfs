@@ -9,8 +9,7 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    #[arg(short, long)]
-    /// The image to load
+    /// The disk image to load
     image_path: OsString,
     #[command(subcommand)]
     verb: Verb,
@@ -26,6 +25,9 @@ pub enum Verb {
         path: Path,
         #[arg(short, long)]
         destination: OsPath,
+    },
+    ExtractAll {
+        destination_folder: OsPath,
     },
     List {
         #[arg(short, long)]
@@ -72,6 +74,11 @@ fn main() {
                 panic!("Could not find file at {path} on the disk: {e}")
             }
         },
+        Verb::ExtractAll {
+            destination_folder: destination,
+        } => {
+            extract_disk(&disk, destination);
+        }
     }
 }
 
@@ -80,10 +87,17 @@ fn write_file_plus_metadata(
     entry: &DirEntry,
     contents: Vec<u8>,
 ) -> Result<(), std::io::Error> {
+    dbg!(&destination);
+
+    let mut folder = destination.clone();
+    folder.pop();
+
+    std::fs::create_dir_all(&folder).unwrap();
+
     std::fs::write(&destination, contents)?;
     let mut inf_path = destination.clone();
     inf_path.set_extension("inf");
-    let inf_data = inf_data(&entry);
+    let inf_data = inf_data(entry);
     std::fs::write(inf_path, inf_data)
 }
 
@@ -100,4 +114,32 @@ fn inf_data(dir: &DirEntry) -> String {
     let mut s = String::new();
     write!(s, "\"{obj_name}\" {load:X} {exec:X} {len} {}", attrs.bits()).unwrap();
     s
+}
+
+fn convert_path_to_os(p: Path) -> OsPath {
+    let mut os_path = OsPath::new();
+    for s in p.to_byte_segments() {
+        let raw_str = str::from_utf8(&s).expect("ADFS name should be valid UTF8");
+        let segment = raw_str.replace("/", ".").replace("!", "$");
+        os_path.push(segment);
+    }
+    os_path
+}
+
+fn extract_disk(disk: &FormatE, destination: OsPath) {
+    let tree = disk.tree.as_ref().unwrap();
+    let m = disk.get_map_json();
+    eprintln!("{m}");
+
+    for path in tree.keys() {
+        let Ok((entry, contents)) = disk.get_file(path) else {
+            continue;
+        };
+
+        let disk_path = convert_path_to_os(path.clone());
+
+        let dest_file = destination.clone().join(disk_path);
+
+        write_file_plus_metadata(dest_file, &entry, contents).unwrap();
+    }
 }
