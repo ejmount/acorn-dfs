@@ -204,14 +204,6 @@ impl Path {
     }
 }
 
-impl<'a> Extend<&'a Path> for Path {
-    fn extend<T: IntoIterator<Item = &'a Path>>(&mut self, iter: T) {
-        for p in iter {
-            self.0.extend(p.0.iter().copied());
-        }
-    }
-}
-
 impl std::fmt::Display for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", Self::ROOT_SYMBOL as char)?;
@@ -219,6 +211,14 @@ impl std::fmt::Display for Path {
             write!(f, "{}{dir}", Self::DIR_SEPARATOR as char)?;
         }
         Ok(())
+    }
+}
+
+impl<'a> Extend<&'a Path> for Path {
+    fn extend<T: IntoIterator<Item = &'a Path>>(&mut self, iter: T) {
+        for p in iter {
+            self.0.extend(p.0.iter().copied());
+        }
     }
 }
 
@@ -238,6 +238,7 @@ pub struct FileTree {
     /// A BTree ordered by Path lets us pull entries from a subdirectory easily
     files: std::collections::BTreeMap<Path, FileObject>,
 }
+
 impl Display for FileTree {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, v) in &self.files {
