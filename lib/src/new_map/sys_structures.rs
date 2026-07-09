@@ -1,11 +1,12 @@
 /// Structures that represent bookkeeping that the program is doing but which
 /// does not map immediately to disk structures
+use std::borrow::Borrow;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
+use std::ops::Index;
 
 use winnow::Parser;
 use winnow::combinator::{opt, preceded, separated, terminated};
-use winnow::error::{AddContext, TreeError};
 use winnow::stream::Stream;
 
 use super::disc_structures::NewMap;
@@ -65,142 +66,153 @@ impl FormatE {
     // Entry point for creating Format-E disks. The resulting structure does not
     // populate the file tree.
     pub fn parse<'a>(bytes: &'a [u8]) -> ParseResult<'a, Self> {
+        let image = bytes.to_vec();
         let mut input = make_input(bytes);
-        let FaultValue(map, faults) = NewMap::parse(&mut input, 1)?;
+        let FaultValue(map, mut faults) = NewMap::parse(&mut input, 1)?;
 
-        let mut f = FormatE {
-            image: bytes.to_vec(),
+        let FaultValue(root_obj, root_faults) = Self::retrieve_root_obj(bytes, &map)?;
+        let tree = BTreeMap::from_iter([(Path::ROOT_PATH, root_obj)]);
+
+        faults.extend(root_faults);
+
+        Ok(FormatE {
+            image,
             map,
-            tree: BTreeMap::default(),
+            tree,
             faults,
-        };
-        f.expand_tree();
-
-        Ok(f)
-    }
-
-    /// Reads the directory heirachy and populates the `tree` field of the
-    /// structure.
-    pub fn expand_tree(&mut self) -> Result<(), TreeError<(), Fault>> {
-        let FaultValue(tree, faults) = self
-            .build_tree()
-            .map_err(|e| e.into_inner().unwrap().map_input(|_| ()))?;
-        self.tree = tree;
-        self.faults.extend(faults);
-        Ok(())
+        })
     }
 
     pub fn get_map_json(&self) -> String {
         serde_json::to_string_pretty(&self.map).unwrap()
     }
 
-    fn populate_path(&self, path: Path) {}
+    fn retrieve_root_obj<'a>(image: &'a [u8], map: &NewMap) -> FaultableResult<'a, FileObject> {
+        let input = make_input(image);
+        let root_link = map.get_disc_record().root_dir;
+        let sector_size = map.get_disc_record().sector_size_in_bytes();
+        let FaultValue(root_dir, faults) = Self::retrieve_directory(
+            map,
+            input,
+            root_link,
+            sector_size,
+            Fault::InvalidRoot {
+                root_link,
+                sector_size,
+            },
+        )?;
+        Ok(FaultValue(FileObject::Dir(Box::new(root_dir)), faults))
+    }
 
-    fn build_tree<'a>(&'a self) -> FaultableResult<'a, BTreeMap<Path, FileObject>> {
-        let input = make_input(&self.image);
-        let dr = self.map.get_disc_record();
-        let root_link = dr.root_dir;
-        let FaultValue(root, mut faults) = self
-            .retrieve_directory(input, root_link, dr.sector_size_in_bytes())
-            .map_err(|e| {
-                let c = input.checkpoint();
-                e.add_context(
-                    &input,
-                    &c,
-                    Fault::InvalidRoot {
-                        root_link,
-                        sector_size: dr.sector_size_in_bytes(),
-                    },
-                )
-            })?;
+    /// Ensures that `self.tree` contains metadata for the given [`Path`] and
+    /// all of its ancestors.
+    ///
+    /// Can fail with
+    /// - [`IoError::MissingTarget`]: Path does not exist on disk
+    /// - [`IoError::InvalidTarget`]: there is a file midway through the given
+    ///   Path.
+    /// - [`ParseError`]: A directory structure on disk was invalid
+    fn populate_path(&mut self, path: &Path) -> ParseResult<'_, Result<(), IoError>> {
+        // Walk up down the parent folders for the given path, root first.
+        // The root itself is already populated on construction so start from first
+        // subfolder
+        for components in 1..=path.len() {
+            let stem = Path::from_segments(&path[..components]);
 
-        // Attach paths to faults if any were raised
-        // This specifically applies to any in the root directory
-        for f in faults.iter_mut() {
-            if let Fault::InvalidAttr { path, .. } | Fault::SequenceNumberMismatch { path, .. } = f
-            {
-                let p = &*path;
-                let mut new_path = Path::default();
-                new_path.extend([p]);
-                *path = new_path;
-            }
-        }
+            // Don't need to do anything if the folder is alredy cached.
+            if !self.tree.contains_key(&stem) {
+                // If it doesn't exist, take the current stem and split it into its ancestry and
+                // the name of the new item we need to add. If needed, we will
+                // have filled in the parent on the last iteration.
+                let (child_name, parent_path) = stem[..].split_last().unwrap();
 
-        let mut queue = vec![(Path::default(), root.clone())];
+                // Grab the cached parent directory listing.
+                // (Can't hold open the borrow on self.tree)
+                let FileObject::Dir(parent) = self.tree[parent_path].clone() else {
+                    return Ok(Err(IoError::InvalidTarget(stem)));
+                };
 
-        let mut files = BTreeMap::new();
-        files.insert(Path::default(), FileObject::Dir(Box::new(root)));
-
-        while let Some((path, item)) = queue.pop() {
-            for child in &item.entries {
-                let new_path = path.append(child.obj_name);
-                if child.attrs.contains(Attributes::DIR) {
-                    let FaultValue(dir, mut cur_faults) = match self.retrieve_directory(
-                        input,
-                        child.address,
-                        dr.sector_size_in_bytes(),
-                    ) {
-                        Ok(dir) => dir,
-                        Err(_) => {
-                            // TODO: Raise a proper fault here
-                            eprintln!("Failed to retrieve directory {new_path}");
-                            continue;
-                        }
-                    };
-                    queue.push((new_path.clone(), dir.clone()));
-                    files.insert(new_path.clone(), FileObject::Dir(Box::new(dir)));
-                    // Attach paths to fault codes again for general files
-                    for f in cur_faults.iter_mut() {
-                        if let Fault::InvalidAttr { path, .. }
-                        | Fault::SequenceNumberMismatch { path, .. } = f
-                        {
-                            let p = &*path;
-                            let mut new_path = new_path.clone();
-                            new_path.extend([p].into_iter());
-                            *path = new_path;
-                        }
-                    }
-                    faults.extend(cur_faults);
-                } else {
-                    files.insert(new_path, FileObject::File(child.clone()));
+                // Fill in any cache entries that refer to files since we have them at this
+                // point anyway
+                for child in parent
+                    .entries
+                    .iter()
+                    .filter(|c| !c.attrs.contains(Attributes::DIR))
+                {
+                    let child_path = Path::from_segments(parent_path).append(child.obj_name);
+                    self.tree
+                        .insert(child_path, FileObject::File(child.clone()));
                 }
+
+                // Having grabbed the parent directory listing, look for the child entry we
+                // actually need If it's missing, abort.
+                let Some(child_entry) = parent.entries.iter().find(|c| c.obj_name == *child_name)
+                else {
+                    return Ok(Err(IoError::MissingTarget(stem)));
+                };
+
+                // If the next path segment refers to a file, we're done either way, but this is
+                // an error if we still have path left to look up
+                if !child_entry.attrs.contains(Attributes::DIR) {
+                    if stem == *path {
+                        return Ok(Ok(()));
+                    } else {
+                        return Ok(Err(IoError::InvalidTarget(stem)));
+                    }
+                }
+
+                // Using the metadata from the child entry, look at the disk bytes for the
+                // actual directory listing
+                let FaultValue(child_directory, faults) = Self::retrieve_directory(
+                    &self.map,
+                    make_input(&self.image),
+                    child_entry.address,
+                    self.map.get_disc_record().sector_size_in_bytes(),
+                    Fault::InvalidDir { path: stem.clone() },
+                )?;
+                // If the new entry has fault codes, store those
+                self.faults.extend(faults);
+
+                // Populate the cache.
+                self.tree
+                    .insert(stem, FileObject::Dir(Box::new(child_directory)));
             }
         }
-
-        Ok(FaultValue(files, faults))
+        Ok(Ok(()))
     }
 
     /// Retrieve the section of the disk that corresponds to the given address
     /// and parse it as [`Directory`] object.
     fn retrieve_directory<'a>(
-        &'a self,
+        map: &NewMap,
         input: InputStream<'a>,
         addr: DiscPosition,
         sector_size: usize,
+        context: impl Into<Option<Fault>>,
     ) -> FaultableResult<'a, Directory> {
-        let block = self
-            .map
-            .get_allocation(0)
-            .get_fragment(addr.fragment())
-            .unwrap();
+        let block = map.get_allocation(0).get_fragment(addr.fragment()).unwrap();
         let entry_region = block.disk_region();
 
         let mut cursor = input;
         let offset = addr.sector_idx() as usize * sector_size;
         cursor.next_slice(entry_region.start + offset);
 
-        Directory::parse(&mut cursor)
+        if let Some(c) = context.into() {
+            Directory::parse.context(c).parse_next(&mut cursor)
+        } else {
+            Directory::parse.parse_next(&mut cursor)
+        }
     }
     /// Gets the metadata and contents of a given path
-    pub fn get_file(&self, path: &Path) -> Result<(DirEntry, Vec<u8>), IoError> {
+    pub fn get_file(&mut self, path: &Path) -> Result<(DirEntry, Vec<u8>), IoError> {
+        self.populate_path(path).unwrap_or_else(|e| panic!("{e}"))?;
+
         let fileobject = self
             .tree
             .get(path)
             .ok_or(IoError::MissingTarget(path.clone()))?;
 
-        let dir_entry = if let FileObject::File(dir_entry) = fileobject {
-            dir_entry
-        } else {
+        let FileObject::File(dir_entry) = fileobject else {
             return Err(IoError::InvalidTarget(path.clone()));
         };
 
@@ -238,6 +250,7 @@ impl FormatE {
 pub struct Path(Vec<FixedLenString>);
 
 impl Path {
+    pub const ROOT_PATH: Path = Path(vec![]);
     pub const ROOT_SYMBOL: u8 = b'$';
     pub const DIR_SEPARATOR: u8 = b'.';
     /// Create a path from a byte-string representing the entire path.
@@ -304,6 +317,14 @@ impl Path {
         Path(segments.to_vec())
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
     /// Attempts to construct a Path out of a given string that was, e.g.
     /// provided by a user.
     ///
@@ -326,6 +347,12 @@ impl Path {
     }
 }
 
+impl Borrow<[FixedLenString]> for Path {
+    fn borrow(&self) -> &[FixedLenString] {
+        &self.0
+    }
+}
+
 impl std::fmt::Display for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", Self::ROOT_SYMBOL as char)?;
@@ -333,6 +360,16 @@ impl std::fmt::Display for Path {
             write!(f, "{}{dir}", Self::DIR_SEPARATOR as char)?;
         }
         Ok(())
+    }
+}
+
+impl<I> Index<I> for Path
+where
+    I: std::slice::SliceIndex<[FixedLenString]>,
+{
+    type Output = <I as std::slice::SliceIndex<[FixedLenString]>>::Output;
+    fn index(&self, index: I) -> &Self::Output {
+        &self.0[index]
     }
 }
 

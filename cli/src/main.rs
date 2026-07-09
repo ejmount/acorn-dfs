@@ -69,7 +69,7 @@ fn main() -> Result<(), std::io::Error> {
         Err(e) => unimplemented!("Parse failed: {e:}"),
     };
 
-    disk.expand_tree().expect("Explode");
+    //disk.expand_tree().expect("Explode");
     if !disk.faults.is_empty() {
         panic!("Explode");
     }
@@ -94,7 +94,7 @@ fn main() -> Result<(), std::io::Error> {
         Verb::ExtractAll {
             destination_folder: destination,
         } => {
-            extract_disk(&disk, destination);
+            extract_disk(&mut disk, destination);
         }
     };
     Ok(())
@@ -152,11 +152,12 @@ fn convert_path_to_os(p: Path) -> OsPath {
     os_path
 }
 
-fn extract_disk(disk: &FormatE, destination: OsPath) {
-    let tree = &disk.tree;
+fn extract_disk(disk: &mut FormatE, destination: OsPath) {
+    //let tree = &disk.tree;
+    let keys: Vec<_> = disk.tree.keys().cloned().collect();
 
-    for path in tree.keys() {
-        let Ok((entry, contents)) = disk.get_file(path) else {
+    for path in keys {
+        let Ok((entry, contents)) = disk.get_file(&path) else {
             continue;
         };
 

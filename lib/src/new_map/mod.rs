@@ -32,6 +32,8 @@ pub enum Fault {
         root_link: DiscPosition,
         sector_size: usize,
     },
+    #[error("Directory at {path} failed to parse")]
+    InvalidDir { path: Path },
     #[error("Expected 'Nick' or 'Hugo', found {}", str::escape_debug(&String::from_utf8_lossy(&*.0)))]
     MagicStringFailure([u8; 4]),
 
