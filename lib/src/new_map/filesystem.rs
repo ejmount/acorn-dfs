@@ -79,7 +79,7 @@ impl Directory {
 
             if check_byte != tail.check_byte {
                 faults.push(Fault::CheckByteFailure {
-                    path: Path::from_segments(vec![tail.name]),
+                    path: Path::from_segments(&[tail.name]),
                     expected: tail.check_byte,
                     actual: check_byte,
                 });
@@ -171,7 +171,7 @@ impl DirEntry {
         let FaultValue(attrs, mut fault) = Attributes::parse(input)?;
         fault.iter_mut().for_each(|f| {
             if let Fault::InvalidAttr { path, .. } = f {
-                *path = Path::from_segments(vec![obj_name]);
+                *path = Path::from_segments(&[obj_name]);
             }
         });
 
