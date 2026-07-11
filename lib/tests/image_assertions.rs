@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::path::Path;
 
+use acorn_dfs::new_map::FaultValue;
 use acorn_dfs::new_map::sys_structures::FormatE;
 use insta::{assert_debug_snapshot, with_settings};
 
@@ -16,9 +17,7 @@ fn format_e_images() {
 
 fn load_format_e(path: &Path) -> FormatE {
     let contents = std::fs::read(path).unwrap();
-    let mut disk = FormatE::parse(&contents).unwrap();
-    disk.expand_tree().expect("Expansion failed");
-    disk
+    FormatE::parse(&contents).unwrap()
 }
 
 fn calculate_checksum(contents: &[u8]) -> u32 {
@@ -33,12 +32,12 @@ fn assert_format_e(path: &Path) {
     let mut entries = BTreeMap::new();
     let mut checksums = BTreeMap::new();
 
-    for f in disk.tree.keys() {
-        let Ok((entry, contents)) = disk.get_file(f) else {
+    for f in disk.entries(None) {
+        let Ok(FaultValue(Ok((entry, contents)), _)) = disk.get_file(&f) else {
             continue;
         };
         let crc = calculate_checksum(&contents);
-        entries.insert(f, entry);
+        entries.insert(f.clone(), entry);
         checksums.insert(f, crc);
     }
 

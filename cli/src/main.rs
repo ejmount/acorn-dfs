@@ -2,9 +2,9 @@ use std::ffi::{OsStr, OsString};
 use std::ops::Deref;
 use std::path::PathBuf as OsPath;
 
-use acorn_dfs::new_map::Path;
 use acorn_dfs::new_map::filesystem::DirEntry;
 use acorn_dfs::new_map::sys_structures::FormatE;
+use acorn_dfs::new_map::{FaultValue, Path};
 use clap::Parser;
 use mmap_io::MemoryMappedFile;
 
@@ -79,16 +79,19 @@ fn main() -> Result<(), std::io::Error> {
             println!("{}", disk.get_map_json());
         }
         Verb::List { prefix } => {
-            for k in disk.keys_by_prefix(prefix.unwrap_or_default()) {
+            for k in disk.entries(prefix) {
                 println!("{k}");
             }
         }
         Verb::ExtractFile { path, destination } => match disk.get_file(&path) {
-            Ok((entry, contents)) => {
+            Ok(FaultValue(Ok((entry, contents)), _)) => {
                 write_file_plus_metadata(destination, &entry, contents).unwrap()
             }
-            Err(e) => {
+            Ok(FaultValue(Err(e), _)) => {
                 panic!("Could not find file at {path} on the disk: {e}")
+            }
+            Err(e) => {
+                panic!("Parse error trying to extract {path} on the disk: {e}")
             }
         },
         Verb::ExtractAll {
@@ -153,11 +156,10 @@ fn convert_path_to_os(p: Path) -> OsPath {
 }
 
 fn extract_disk(disk: &mut FormatE, destination: OsPath) {
-    //let tree = &disk.tree;
-    let keys: Vec<_> = disk.keys().cloned().collect();
+    let keys: Vec<_> = disk.entries(None).collect();
 
     for path in keys {
-        let Ok((entry, contents)) = disk.get_file(&path) else {
+        let Ok(FaultValue(Ok((entry, contents)), _)) = disk.get_file(&path) else {
             continue;
         };
 
