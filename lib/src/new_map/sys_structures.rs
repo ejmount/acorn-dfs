@@ -11,14 +11,7 @@ use winnow::stream::Stream;
 
 use super::disc_structures::NewMap;
 use super::filesystem::{Attributes, DirEntry, Directory};
-use super::util::{
-    DiscPosition,
-    FaultableResult,
-    FixedLenString,
-    InputStream,
-    ParseResult,
-    make_input,
-};
+use super::util::{DiscPosition, FaultableResult, FixedLenString, ParseResult, make_input};
 use super::{Fault, FaultValue, IoError};
 
 /// An entry for the [`FileTree`], representing either a directory or a file.
@@ -27,7 +20,8 @@ use super::{Fault, FaultValue, IoError};
 /// representing a file only exists as a field inside a [`Directory`]
 #[derive(Debug, Clone)]
 pub enum FileObject {
-    Dir(Box<Directory>),
+    SparseDir(DirEntry),
+    LoadedDir(Box<Directory>),
     File(DirEntry),
 }
 
@@ -70,8 +64,10 @@ impl FormatE {
         let mut input = make_input(bytes);
         let FaultValue(map, mut faults) = NewMap::parse(&mut input, 1)?;
 
-        let FaultValue(root_obj, root_faults) = Self::retrieve_root_obj(bytes, &map)?;
-        let tree = BTreeMap::from_iter([(Path::ROOT_PATH, root_obj)]);
+        // Retrieving the root directory object is special, so we do that upfront so
+        // that other FS operations can assume the root is cached and walk down from
+        // there.
+        let FaultValue(tree, root_faults) = Self::create_initial_file_tree(bytes, &map)?;
 
         faults.extend(root_faults);
 
@@ -87,13 +83,18 @@ impl FormatE {
         serde_json::to_string_pretty(&self.map).unwrap()
     }
 
-    fn retrieve_root_obj<'a>(image: &'a [u8], map: &NewMap) -> FaultableResult<'a, FileObject> {
-        let input = make_input(image);
+    fn create_initial_file_tree<'a>(
+        image: &'a [u8],
+        map: &NewMap,
+    ) -> FaultableResult<'a, BTreeMap<Path, FileObject>> {
+        let mut tree = BTreeMap::new();
+        let mut faults = vec![];
+
         let root_link = map.get_disc_record().root_dir;
         let sector_size = map.get_disc_record().sector_size_in_bytes();
-        let FaultValue(root_dir, faults) = Self::retrieve_directory(
+        let FaultValue(root_dir, root_faults) = Self::retrieve_directory(
             map,
-            input,
+            image,
             root_link,
             sector_size,
             Fault::InvalidRoot {
@@ -101,11 +102,24 @@ impl FormatE {
                 sector_size,
             },
         )?;
-        Ok(FaultValue(FileObject::Dir(Box::new(root_dir)), faults))
+        faults.extend(root_faults);
+
+        for child in root_dir.entries.iter().cloned() {
+            let name = Path::from_segments(&[child.obj_name]);
+            if child.attrs.contains(Attributes::DIR) {
+                tree.insert(name, FileObject::SparseDir(child));
+            } else {
+                tree.insert(name, FileObject::File(child));
+            }
+        }
+        tree.insert(Path::ROOT_PATH, FileObject::LoadedDir(Box::new(root_dir)));
+
+        Ok(FaultValue(tree, faults))
     }
 
-    /// Ensures that `self.tree` contains metadata for the given [`Path`] and
-    /// all of its ancestors.
+    /// Ensures that `self.tree` contains metadata for the given [`Path`],
+    /// all of its ancestors, and at least sparse entries for all of its direct
+    /// children.
     ///
     /// Can fail with
     /// - [`IoError::MissingTarget`]: Path does not exist on disk
@@ -119,64 +133,85 @@ impl FormatE {
         for components in 1..=path.len() {
             let stem = Path::from_segments(&path[..components]);
 
-            // Don't need to do anything if the folder is alredy cached.
-            if !self.tree.contains_key(&stem) {
-                // If it doesn't exist, take the current stem and split it into its ancestry and
-                // the name of the new item we need to add. If needed, we will
-                // have filled in the parent on the last iteration.
-                let (child_name, parent_path) = stem[..].split_last().unwrap();
+            // Try to look up the [`DirEntry`] pointer that will tell us where the
+            // directory structure itself is located.
+            let child_entry = match self.tree.get(&stem) {
+                // Don't need to do anything if the folder is alredy cached and expanded.
+                // We can immediately start looking at the next layer down.
+                Some(FileObject::LoadedDir(_)) => continue,
+                // If the pointer is cached, return it.
+                Some(FileObject::SparseDir(entry)) => entry.clone(),
 
-                // Grab the cached parent directory listing.
-                // (Can't hold open the borrow on self.tree)
-                let FileObject::Dir(parent) = self.tree[parent_path].clone() else {
-                    return Ok(Err(IoError::InvalidTarget(stem)));
-                };
-
-                // Fill in any cache entries that refer to files since we have them at this
-                // point anyway
-                for child in parent
-                    .entries
-                    .iter()
-                    .filter(|c| !c.attrs.contains(Attributes::DIR))
-                {
-                    let child_path = Path::from_segments(parent_path).append(child.obj_name);
-                    self.tree
-                        .insert(child_path, FileObject::File(child.clone()));
-                }
-
-                // Having grabbed the parent directory listing, look for the child entry we
-                // actually need If it's missing, abort.
-                let Some(child_entry) = parent.entries.iter().find(|c| c.obj_name == *child_name)
-                else {
-                    return Ok(Err(IoError::MissingTarget(stem)));
-                };
-
-                // If the next path segment refers to a file, we're done either way, but this is
-                // an error if we still have path left to look up
-                if !child_entry.attrs.contains(Attributes::DIR) {
+                Some(FileObject::File(_)) => {
+                    // If the entry is a file, check whether we're at the bottom-most layer we're
+                    // expecting and we found the target successfully, else abort with an error.
                     if stem == *path {
                         return Ok(Ok(()));
                     } else {
                         return Ok(Err(IoError::InvalidTarget(stem)));
                     }
                 }
+                // (Unclear if it's possible to take this branch in practice because we build the
+                // cache incrementally from the root)
+                None => {
+                    // If it doesn't exist, take the current stem and split it into its ancestry and
+                    // the name of the new item we need to add. If needed, we will
+                    // have filled in the parent on the last iteration.
+                    let (child_name, parent_path) = stem[..].split_last().unwrap();
 
-                // Using the metadata from the child entry, look at the disk bytes for the
-                // actual directory listing
-                let FaultValue(child_directory, faults) = Self::retrieve_directory(
-                    &self.map,
-                    make_input(&self.image),
-                    child_entry.address,
-                    self.map.get_disc_record().sector_size_in_bytes(),
-                    Fault::InvalidDir { path: stem.clone() },
-                )?;
-                // If the new entry has fault codes, store those
-                self.faults.extend(faults);
+                    // Grab the cached parent directory listing.
+                    // (Can't hold open the borrow on self.tree)
+                    let FileObject::LoadedDir(parent) = self.tree[parent_path].clone() else {
+                        return Ok(Err(IoError::InvalidTarget(stem)));
+                    };
 
-                // Populate the cache.
-                self.tree
-                    .insert(stem, FileObject::Dir(Box::new(child_directory)));
+                    // Fill in any cache entries that refer to files since we have them at this
+                    // point anyway
+                    for child in parent.entries.iter().cloned() {
+                        let child_path = Path::from_segments(parent_path).append(child.obj_name);
+                        if child.attrs.contains(Attributes::DIR) {
+                            self.tree.insert(child_path, FileObject::SparseDir(child));
+                        } else {
+                            self.tree.insert(child_path, FileObject::File(child));
+                        }
+                    }
+
+                    // Having grabbed the parent directory listing, look for the child entry we
+                    // actually need. If it's missing, abort.
+                    let Some(child_entry) =
+                        parent.entries.iter().find(|c| c.obj_name == *child_name)
+                    else {
+                        return Ok(Err(IoError::MissingTarget(stem)));
+                    };
+                    child_entry.clone()
+                }
+            };
+
+            // If the next path segment refers to a file, we're done either way, but this is
+            // an error if we still have path left to look up
+            if !child_entry.attrs.contains(Attributes::DIR) {
+                if stem == *path {
+                    return Ok(Ok(()));
+                } else {
+                    return Ok(Err(IoError::InvalidTarget(stem)));
+                }
             }
+
+            // Using the metadata from the child entry, look at the disk bytes for the
+            // actual directory listing
+            let FaultValue(child_directory, faults) = Self::retrieve_directory(
+                &self.map,
+                &self.image,
+                child_entry.address,
+                self.map.get_disc_record().sector_size_in_bytes(),
+                Fault::InvalidDir { path: stem.clone() },
+            )?;
+            // If the new entry has fault codes, store those
+            self.faults.extend(faults);
+
+            // Upsert the cache entry.
+            self.tree
+                .insert(stem, FileObject::LoadedDir(Box::new(child_directory)));
         }
         Ok(Ok(()))
     }
@@ -185,7 +220,7 @@ impl FormatE {
     /// and parse it as [`Directory`] object.
     fn retrieve_directory<'a>(
         map: &NewMap,
-        input: InputStream<'a>,
+        image: &'a [u8],
         addr: DiscPosition,
         sector_size: usize,
         context: impl Into<Option<Fault>>,
@@ -193,7 +228,9 @@ impl FormatE {
         let block = map.get_allocation(0).get_fragment(addr.fragment()).unwrap();
         let entry_region = block.disk_region();
 
-        let mut cursor = input;
+        // Slightly convoluted but it means that parser errors have the right offset,
+        // w.r.t the entire image
+        let mut cursor = make_input(image);
         let offset = addr.sector_idx() as usize * sector_size;
         cursor.next_slice(entry_region.start + offset);
 
