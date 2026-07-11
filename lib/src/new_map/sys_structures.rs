@@ -148,9 +148,9 @@ impl FormatE {
                     // If the entry is a file, check whether we're at the bottom-most layer we're
                     // expecting and we found the target successfully, else abort with an error.
                     if stem == *path {
-                        return Ok(FaultValue(Ok(()), vec![]));
+                        return Ok(FaultValue::from(Ok(())));
                     } else {
-                        return Ok(FaultValue(Err(IoError::InvalidTarget(stem)), vec![]));
+                        return Ok(FaultValue::from(Err(IoError::InvalidTarget(stem))));
                     }
                 }
                 // (Unclear if it's possible to take this branch in practice because we build the
@@ -165,7 +165,7 @@ impl FormatE {
                     // (Can't hold open the borrow on self.tree)
                     let FileObject::LoadedDir(parent) = self.tree.borrow()[parent_path].clone()
                     else {
-                        return Ok(FaultValue(Err(IoError::InvalidTarget(stem)), vec![]));
+                        return Ok(FaultValue::from(Err(IoError::InvalidTarget(stem))));
                     };
 
                     // Fill in any cache entries that refer to files since we have them at this
@@ -180,7 +180,7 @@ impl FormatE {
                     let Some(child_entry) =
                         parent.entries.iter().find(|c| c.obj_name == *child_name)
                     else {
-                        return Ok(FaultValue(Err(IoError::MissingTarget(stem)), vec![]));
+                        return Ok(FaultValue::from(Err(IoError::MissingTarget(stem))));
                     };
                     child_entry.clone()
                 }
@@ -190,9 +190,9 @@ impl FormatE {
             // an error if we still have path left to look up
             if !child_entry.attrs.contains(Attributes::DIR) {
                 if stem == *path {
-                    return Ok(FaultValue(Ok(()), vec![]));
+                    return Ok(FaultValue::from(Ok(())));
                 } else {
-                    return Ok(FaultValue(Err(IoError::InvalidTarget(stem)), vec![]));
+                    return Ok(FaultValue::from(Err(IoError::InvalidTarget(stem))));
                 }
             }
 
@@ -265,27 +265,23 @@ impl FormatE {
         let fileobject = &self.tree.borrow()[path];
 
         let FileObject::File(dir_entry) = fileobject else {
-            return Ok(FaultValue(
-                Err(IoError::InvalidTarget(path.clone())),
-                vec![],
-            ));
+            return Ok(FaultValue::from(Err(IoError::InvalidTarget(path.clone()))));
         };
 
         let region = match self.map.get_file_region(dir_entry) {
             Some(region) => region,
             None => {
-                return Ok(FaultValue(
-                    Err(IoError::MissingFragment(dir_entry.address)),
-                    vec![],
-                ));
+                return Ok(FaultValue::from(Err(IoError::MissingFragment(
+                    dir_entry.address,
+                ))));
             }
         };
 
         if let Err(e) = dest.write_all(&self.image[region]) {
-            return Ok(FaultValue(Err(IoError::StdError(e)), vec![]));
+            return Ok(FaultValue::from(Err(IoError::StdError(e))));
         }
 
-        Ok(FaultValue(Ok(dir_entry.clone()), vec![]))
+        Ok(FaultValue::from(Ok(dir_entry.clone())))
     }
 
     pub fn entries(&self, prefix: Option<Path>) -> impl Iterator<Item = Path> {
@@ -468,8 +464,8 @@ mod test {
 
     #[test]
     fn parse_paths() {
-        assert_eq!(Path::from_bytes(b"$"), Some(Path(vec![])));
-        assert_eq!(Path::from_bytes(b"$."), Some(Path(vec![])));
+        assert_eq!(Path::from_bytes(b"$"), Some(Path::ROOT_PATH));
+        assert_eq!(Path::from_bytes(b"$."), Some(Path::ROOT_PATH));
         assert_eq!(
             Path::from_bytes(b"$.Utilities.!TeleRoute.Templates"),
             Some(Path(vec![

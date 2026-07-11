@@ -172,14 +172,12 @@ impl MapBlock {
 
         // TODO: Add zone_check validation
 
-        Ok(FaultValue(
-            MapBlock {
-                header,
-                allocations,
-                _unused,
-            },
-            vec![],
-        ))
+        Ok(MapBlock {
+            header,
+            allocations,
+            _unused,
+        }
+        .into())
     }
     fn parse_with_disc_record<'a>(
         includes_map: bool,

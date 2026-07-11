@@ -27,14 +27,16 @@ pub enum Fault {
         path: Path,
         attr_value: u8,
     },
-    #[error("Could not retrieve root directory")]
+    #[error(
+        "Could not retrieve root directory (root_link={root_link:?}, sector_size={sector_size})"
+    )]
     InvalidRoot {
         root_link: DiscPosition,
         sector_size: usize,
     },
     #[error("Directory at {path} failed to parse")]
     InvalidDir { path: Path },
-    #[error("Expected 'Nick' or 'Hugo', found {}", str::escape_debug(&String::from_utf8_lossy(&*.0)))]
+    #[error("Expected 'Nick' or 'Hugo', found '{}'", str::escape_debug(&String::from_utf8_lossy(&*.0)))]
     MagicStringFailure([u8; 4]),
 
     #[error(
