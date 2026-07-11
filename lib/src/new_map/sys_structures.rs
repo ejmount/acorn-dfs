@@ -1,6 +1,7 @@
 /// Structures that represent bookkeeping that the program is doing but which
 /// does not map immediately to disk structures
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::ops::Index;
@@ -13,6 +14,8 @@ use super::disc_structures::NewMap;
 use super::filesystem::{Attributes, DirEntry, Directory};
 use super::util::{DiscPosition, FaultableResult, FixedLenString, ParseResult, make_input};
 use super::{Fault, FaultValue, IoError};
+
+type FileTree = BTreeMap<Path, FileObject>;
 
 /// An entry for the [`FileTree`], representing either a directory or a file.
 ///
@@ -40,7 +43,7 @@ pub struct FormatE {
     pub map: NewMap,
     /// A summarised copy of the filesystem tree - this does not directly
     /// correspond to any disk contents.
-    pub tree: BTreeMap<Path, FileObject>,
+    pub tree: RefCell<FileTree>,
     /// A list of non-fatal faults encountered while parsing the disk data. This
     /// includes validation failures, etc.
     pub faults: Vec<Fault>,
@@ -74,7 +77,7 @@ impl FormatE {
         Ok(FormatE {
             image,
             map,
-            tree,
+            tree: RefCell::new(tree),
             faults,
         })
     }
@@ -86,8 +89,8 @@ impl FormatE {
     fn create_initial_file_tree<'a>(
         image: &'a [u8],
         map: &NewMap,
-    ) -> FaultableResult<'a, BTreeMap<Path, FileObject>> {
-        let mut tree = BTreeMap::new();
+    ) -> FaultableResult<'a, FileTree> {
+        let mut tree = FileTree::new();
         let mut faults = vec![];
 
         let root_link = map.get_disc_record().root_dir;
@@ -106,11 +109,7 @@ impl FormatE {
 
         for child in root_dir.entries.iter().cloned() {
             let name = Path::from_segments(&[child.obj_name]);
-            if child.attrs.contains(Attributes::DIR) {
-                tree.insert(name, FileObject::SparseDir(child));
-            } else {
-                tree.insert(name, FileObject::File(child));
-            }
+            Self::insert_dir_entry(&mut tree, child, name);
         }
         tree.insert(Path::ROOT_PATH, FileObject::LoadedDir(Box::new(root_dir)));
 
@@ -135,7 +134,7 @@ impl FormatE {
 
             // Try to look up the [`DirEntry`] pointer that will tell us where the
             // directory structure itself is located.
-            let child_entry = match self.tree.get(&stem) {
+            let child_entry = match self.tree.borrow().get(&stem) {
                 // Don't need to do anything if the folder is alredy cached and expanded.
                 // We can immediately start looking at the next layer down.
                 Some(FileObject::LoadedDir(_)) => continue,
@@ -161,7 +160,8 @@ impl FormatE {
 
                     // Grab the cached parent directory listing.
                     // (Can't hold open the borrow on self.tree)
-                    let FileObject::LoadedDir(parent) = self.tree[parent_path].clone() else {
+                    let FileObject::LoadedDir(parent) = self.tree.borrow()[parent_path].clone()
+                    else {
                         return Ok(Err(IoError::InvalidTarget(stem)));
                     };
 
@@ -169,11 +169,7 @@ impl FormatE {
                     // point anyway
                     for child in parent.entries.iter().cloned() {
                         let child_path = Path::from_segments(parent_path).append(child.obj_name);
-                        if child.attrs.contains(Attributes::DIR) {
-                            self.tree.insert(child_path, FileObject::SparseDir(child));
-                        } else {
-                            self.tree.insert(child_path, FileObject::File(child));
-                        }
+                        Self::insert_dir_entry(&mut self.tree.borrow_mut(), child, child_path);
                     }
 
                     // Having grabbed the parent directory listing, look for the child entry we
@@ -209,11 +205,25 @@ impl FormatE {
             // If the new entry has fault codes, store those
             self.faults.extend(faults);
 
+            for child in &child_directory.entries {
+                let child_path = stem.clone().append(child.obj_name);
+                Self::insert_dir_entry(&mut self.tree.borrow_mut(), child.clone(), child_path);
+            }
+
             // Upsert the cache entry.
             self.tree
+                .borrow_mut()
                 .insert(stem, FileObject::LoadedDir(Box::new(child_directory)));
         }
         Ok(Ok(()))
+    }
+
+    fn insert_dir_entry(tree: &mut FileTree, child: DirEntry, child_path: Path) {
+        if child.attrs.contains(Attributes::DIR) {
+            tree.insert(child_path, FileObject::SparseDir(child));
+        } else {
+            tree.insert(child_path, FileObject::File(child));
+        }
     }
 
     /// Retrieve the section of the disk that corresponds to the given address
@@ -244,10 +254,9 @@ impl FormatE {
     pub fn get_file(&mut self, path: &Path) -> Result<(DirEntry, Vec<u8>), IoError> {
         self.populate_path(path).unwrap_or_else(|e| panic!("{e}"))?;
 
-        let fileobject = self
-            .tree
-            .get(path)
-            .ok_or(IoError::MissingTarget(path.clone()))?;
+        let r = self.tree.borrow();
+
+        let fileobject = r.get(path).ok_or(IoError::MissingTarget(path.clone()))?;
 
         let FileObject::File(dir_entry) = fileobject else {
             return Err(IoError::InvalidTarget(path.clone()));
@@ -264,16 +273,11 @@ impl FormatE {
     }
 
     pub fn keys(&self) -> impl Iterator<Item = &'_ Path> {
-        self.tree.keys()
+        std::iter::empty()
     }
 
     pub fn keys_by_prefix(&self, prefix: Path) -> impl Iterator<Item = &'_ Path> {
-        let prefix1 = prefix.clone();
-        let prefix2 = prefix.clone();
-        self.tree
-            .keys()
-            .skip_while(move |path| **path < prefix1)
-            .take_while(move |path| prefix2.is_prefix(path))
+        std::iter::empty()
     }
 }
 

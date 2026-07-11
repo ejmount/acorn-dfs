@@ -154,7 +154,7 @@ fn convert_path_to_os(p: Path) -> OsPath {
 
 fn extract_disk(disk: &mut FormatE, destination: OsPath) {
     //let tree = &disk.tree;
-    let keys: Vec<_> = disk.tree.keys().cloned().collect();
+    let keys: Vec<_> = disk.keys().cloned().collect();
 
     for path in keys {
         let Ok((entry, contents)) = disk.get_file(&path) else {
