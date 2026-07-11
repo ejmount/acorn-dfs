@@ -317,9 +317,6 @@ pub(crate) struct DiscRecord {
 }
 
 impl DiscRecord {
-    pub(crate) fn fragment_block_size(&self) -> usize {
-        self.log2_bytes_per_mapbit as _
-    }
     pub(crate) fn sector_size_in_bytes(&self) -> usize {
         2u32.pow(self.log2_sec_size as _) as _
     }

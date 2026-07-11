@@ -388,13 +388,6 @@ impl Path {
         Path(segments)
     }
 
-    /// Creates a new Path that prepends the given segment before `self`
-    pub(crate) fn prepend(&self, segment: FixedLenString) -> Path {
-        let mut segments = self.0.clone();
-        segments.insert(0, segment);
-        Path(segments)
-    }
-
     /// Creates a Path directly out of a set of segments
     pub(crate) fn from_segments(segments: &[FixedLenString]) -> Path {
         Path(segments.to_vec())

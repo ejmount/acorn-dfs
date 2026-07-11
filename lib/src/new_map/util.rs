@@ -259,7 +259,7 @@ impl<const LEN: usize> FixedLenString<LEN> {
     /// values correctly.
     pub fn parse_from_byte_str<'a>(
         input: &mut InputStream<'a>,
-    ) -> ModalResult<FixedLenString<LEN>, TreeError<InputStream<'a>, Fault>> {
+    ) -> ParseResult<'a, FixedLenString<LEN>> {
         let next_end_char = input
             .offset_for(|c| c.is_ascii_control() || Self::FORBIDDEN_CHARS.contains(&c))
             .unwrap_or(input.len());

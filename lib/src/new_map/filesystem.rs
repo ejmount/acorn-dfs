@@ -3,7 +3,7 @@
 
 use arrayvec::ArrayVec;
 use winnow::Parser;
-use winnow::binary::{le_u8, le_u16, le_u32};
+use winnow::binary::{le_u8, le_u32};
 use winnow::combinator::{repeat, seq, trace};
 use winnow::stream::Location;
 use winnow::token::take;
@@ -69,30 +69,29 @@ impl Directory {
 
             let check_byte = Self::compute_checksum(start_data, &entry_data, tail_data);
 
-            if header.start_seq_num != tail.end_seq_num {
+            let directory = Directory {
+                header,
+                entries,
+                tail,
+            };
+
+            if directory.header.start_seq_num != directory.tail.end_seq_num {
                 faults.push(Fault::SequenceNumberMismatch {
                     path: Path::default(),
-                    start_seq_num: header.start_seq_num,
-                    end_seq_num: tail.end_seq_num,
+                    start_seq_num: directory.header.start_seq_num,
+                    end_seq_num: directory.tail.end_seq_num,
                 });
             }
 
-            if check_byte != tail.check_byte {
+            if check_byte != directory.tail.check_byte {
                 faults.push(Fault::CheckByteFailure {
-                    path: Path::from_segments(&[tail.name]),
-                    expected: tail.check_byte,
+                    path: Path::from_segments(&[directory.tail.name]),
+                    expected: directory.tail.check_byte,
                     actual: check_byte,
                 });
             }
 
-            Ok(FaultValue(
-                Directory {
-                    header,
-                    entries,
-                    tail,
-                },
-                faults,
-            ))
+            Ok(FaultValue(directory, faults))
         })
         .parse_next(input)
     }
