@@ -4,6 +4,7 @@ use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
+use std::io::Write;
 use std::ops::Index;
 
 use winnow::Parser;
@@ -256,7 +257,8 @@ impl FormatE {
     pub fn get_file(
         &self,
         path: &Path,
-    ) -> FaultableResult<'_, Result<(DirEntry, Vec<u8>), IoError>> {
+        dest: &mut dyn Write,
+    ) -> FaultableResult<'_, Result<DirEntry, IoError>> {
         self.populate_path(path)?;
 
         // This should not be able to fail because we bailed if `populate_path` failed
@@ -279,9 +281,11 @@ impl FormatE {
             }
         };
 
-        let mut contents = Vec::with_capacity(region.end - region.start);
-        contents.extend_from_slice(&self.image[region]);
-        Ok(FaultValue(Ok((dir_entry.clone(), contents)), vec![]))
+        if let Err(e) = dest.write_all(&self.image[region]) {
+            return Ok(FaultValue(Err(IoError::StdError(e)), vec![]));
+        }
+
+        Ok(FaultValue(Ok(dir_entry.clone()), vec![]))
     }
 
     pub fn entries(&self, prefix: Option<Path>) -> impl Iterator<Item = Path> {

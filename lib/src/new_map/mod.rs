@@ -61,7 +61,7 @@ pub enum Fault {
     },
 }
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug)]
 pub enum IoError {
     #[error("Could not find indirect disc position {:?}", .0)]
     MissingFragment(DiscPosition),
@@ -69,6 +69,8 @@ pub enum IoError {
     MissingTarget(Path),
     #[error("Path {} did exist but did not have requested type", .0)]
     InvalidTarget(Path),
+    #[error("IO failure: {}", .0)]
+    StdError(std::io::Error),
 }
 
 #[derive(Debug, Clone)]

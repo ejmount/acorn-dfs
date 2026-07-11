@@ -83,17 +83,24 @@ fn main() -> Result<(), std::io::Error> {
                 println!("{k}");
             }
         }
-        Verb::ExtractFile { path, destination } => match disk.get_file(&path) {
-            Ok(FaultValue(Ok((entry, contents)), _)) => {
-                write_file_plus_metadata(destination, &entry, contents).unwrap()
+        Verb::ExtractFile { path, destination } => {
+            match write_file_plus_metadata(&disk, destination, &path) {
+                Ok(_) => {}
+                Err(e) => panic!("Could not extract file at {path}: {e}"),
             }
-            Ok(FaultValue(Err(e), _)) => {
-                panic!("Could not find file at {path} on the disk: {e}")
-            }
-            Err(e) => {
-                panic!("Parse error trying to extract {path} on the disk: {e}")
-            }
-        },
+
+            // match disk.get_file(&path, &mut contents) {
+            //     Ok(FaultValue(Ok(entry), _)) => {
+            //         write_file_plus_metadata(destination, &entry,
+            // contents).unwrap()     }
+            //     Ok(FaultValue(Err(e), _)) => {
+            //         panic!("Could not find file at {path} on the disk: {e}")
+            //     }
+            //     Err(e) => {
+            //         panic!("Parse error trying to extract {path} on the disk:
+            // {e}")     }
+            // }
+        }
         Verb::ExtractAll {
             destination_folder: destination,
         } => {
@@ -114,19 +121,26 @@ fn read_file(path: &OsStr) -> Result<DataSource, std::io::Error> {
 }
 
 fn write_file_plus_metadata(
+    disk: &FormatE,
     destination: OsPath,
-    entry: &DirEntry,
-    contents: Vec<u8>,
+    path: &Path,
 ) -> Result<(), std::io::Error> {
     let mut folder = destination.clone();
+
+    // Assume that destination is pointing at a filename, remove the leaf name to
+    // get the bottom-most containing folder.
     folder.pop();
 
     std::fs::create_dir_all(&folder).unwrap();
 
-    std::fs::write(&destination, contents)?;
+    let mut f = std::fs::File::create(&destination).unwrap_or_else(|_| todo!());
+
+    let FaultValue(read, _) = disk.get_file(path, &mut f).unwrap_or_else(|_| todo!());
+    let entry = read.unwrap_or_else(|_| todo!());
+
     let mut inf_path = destination.clone();
     inf_path.set_extension("inf");
-    let inf_data = inf_data(entry);
+    let inf_data = inf_data(&entry);
     std::fs::write(inf_path, inf_data)
 }
 
@@ -159,14 +173,10 @@ fn extract_disk(disk: &mut FormatE, destination: OsPath) {
     let keys: Vec<_> = disk.entries(None).collect();
 
     for path in keys {
-        let Ok(FaultValue(Ok((entry, contents)), _)) = disk.get_file(&path) else {
-            continue;
-        };
-
         let disk_path = convert_path_to_os(path.clone());
 
         let dest_file = destination.clone().join(disk_path);
 
-        write_file_plus_metadata(dest_file, &entry, contents).unwrap();
+        write_file_plus_metadata(disk, dest_file, &path).unwrap();
     }
 }
