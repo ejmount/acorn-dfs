@@ -1,7 +1,9 @@
-// Overall global metadata structures for NewMap formats defined in http://www.riscos.com/support/developers/prm/filecore.html
-//
-// This does not include structures for ordinary filesystem entries such as
-// directory records.
+//! Overall global metadata structures for NewMap formats defined in http://www.riscos.com/support/developers/prm/filecore.html
+//!
+//! This does not include structures for ordinary filesystem entries such as
+//! directory records.
+//!
+//! The entry point to this module is [`new_map::FormatE`]
 
 /// The offset of the allocation map from the beginning of the disk
 ///
