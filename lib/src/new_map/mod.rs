@@ -4,9 +4,10 @@ pub mod sys_structures;
 pub mod util;
 
 use thiserror::Error;
+use winnow::error::ErrMode;
 
 pub use self::sys_structures::Path;
-use self::util::{BitPosition, DiscPosition};
+use self::util::{BitPosition, DiscPosition, ParseError};
 
 const STRICT_MODE: bool = true;
 
@@ -73,6 +74,26 @@ pub enum IoError {
     InvalidTarget(Path),
     #[error("IO failure: {}", .0)]
     StdError(std::io::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum Error<'a> {
+    #[error("{:}", .0)]
+    LookupError(IoError),
+    #[error("{:}", .0)]
+    ParseError(ErrMode<ParseError<'a>>),
+}
+
+impl<'a> From<IoError> for Error<'a> {
+    fn from(value: IoError) -> Self {
+        Error::LookupError(value)
+    }
+}
+
+impl<'a> From<ErrMode<ParseError<'a>>> for Error<'a> {
+    fn from(value: ErrMode<ParseError<'a>>) -> Self {
+        Error::ParseError(value)
+    }
 }
 
 #[derive(Debug, Clone)]

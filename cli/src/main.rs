@@ -79,7 +79,7 @@ fn main() -> Result<(), std::io::Error> {
             println!("{}", disk.get_map_json());
         }
         Verb::List { prefix } => {
-            for k in disk.entries(prefix) {
+            for k in disk.entries(prefix).unwrap() {
                 println!("{k}");
             }
         }
@@ -135,8 +135,7 @@ fn write_file_plus_metadata(
 
     let mut f = std::fs::File::create(&destination).unwrap_or_else(|_| todo!());
 
-    let FaultValue(read, _) = disk.get_file(path, &mut f).unwrap_or_else(|_| todo!());
-    let entry = read.unwrap_or_else(|_| todo!());
+    let FaultValue(entry, _) = disk.get_file(path, &mut f).unwrap_or_else(|_| todo!());
 
     let mut inf_path = destination.clone();
     inf_path.set_extension("inf");
@@ -170,7 +169,7 @@ fn convert_path_to_os(p: Path) -> OsPath {
 }
 
 fn extract_disk(disk: &mut FormatE, destination: OsPath) {
-    let keys: Vec<_> = disk.entries(None).collect();
+    let keys: Vec<_> = disk.entries(None).unwrap();
 
     for path in keys {
         let disk_path = convert_path_to_os(path.clone());

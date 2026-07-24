@@ -29,11 +29,12 @@ pub(crate) type ParseError<'a> = TreeError<InputStream<'a>, Fault>;
 /// Parsing most structures produces either a valid instance of the structure or
 /// a [`ParseError`] which represents unexpected input, but [`ModalResult`] also
 /// covers the possibility that we run off the end of the stream
-pub(crate) type ParseResult<'a, Type> = ModalResult<Type, ParseError<'a>>;
+pub(crate) type ParseResult<'a, Type, E = ParseError<'a>> = ModalResult<Type, E>;
 
 /// Parsing certain structures can succeed but raise non-fatal issues, encoded
 /// in the [`FaultValue`] pair
-pub(crate) type FaultableResult<'a, Type> = ParseResult<'a, FaultValue<Type>>;
+pub(crate) type FaultableResult<'a, Type, E = ParseError<'a>> =
+    ParseResult<'a, FaultValue<Type>, E>;
 
 /// Input for parsing the
 /// [`AllocationMap`][`super::disc_structures::AllocationMap`] which is the only

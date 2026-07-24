@@ -14,7 +14,7 @@ use winnow::stream::Stream;
 use super::disc_structures::NewMap;
 use super::filesystem::{Attributes, DirEntry, Directory};
 use super::util::{DiscPosition, FaultableResult, FixedLenString, ParseResult, make_input};
-use super::{Fault, FaultValue, IoError};
+use super::{Error, Fault, FaultValue, IoError};
 
 type FileTree = BTreeMap<Path, FileObject>;
 
@@ -123,10 +123,10 @@ impl FormatE {
     ///
     /// Can fail with
     /// - [`IoError::MissingTarget`]: Path does not exist on disk
-    /// - [`IoError::InvalidTarget`]: there is a file midway through the given
-    ///   Path.
+    /// - [`IoError::InvalidTarget`]: some subset of the Path points to a file
+    ///   rather than a folder
     /// - [`ParseError`]: A directory structure on disk was invalid
-    fn populate_path(&self, path: &Path) -> FaultableResult<'_, Result<(), IoError>> {
+    fn populate_path(&self, path: &Path) -> Result<FaultValue<()>, Error<'_>> {
         let mut overall_faults = vec![];
 
         // Walk up down the parent folders for the given path, root first.
@@ -148,9 +148,9 @@ impl FormatE {
                     // If the entry is a file, check whether we're at the bottom-most layer we're
                     // expecting and we found the target successfully, else abort with an error.
                     if stem == *path {
-                        return Ok(FaultValue::from(Ok(())));
+                        return Ok(FaultValue::from(()));
                     } else {
-                        return Ok(FaultValue::from(Err(IoError::InvalidTarget(stem))));
+                        return Err(IoError::InvalidTarget(stem).into());
                     }
                 }
                 // (Unclear if it's possible to take this branch in practice because we build the
@@ -165,7 +165,7 @@ impl FormatE {
                     // (Can't hold open the borrow on self.tree)
                     let FileObject::LoadedDir(parent) = self.tree.borrow()[parent_path].clone()
                     else {
-                        return Ok(FaultValue::from(Err(IoError::InvalidTarget(stem))));
+                        return Err(IoError::InvalidTarget(stem).into());
                     };
 
                     // Fill in any cache entries that refer to files since we have them at this
@@ -180,7 +180,7 @@ impl FormatE {
                     let Some(child_entry) =
                         parent.entries.iter().find(|c| c.obj_name == *child_name)
                     else {
-                        return Ok(FaultValue::from(Err(IoError::MissingTarget(stem))));
+                        return Err(IoError::MissingTarget(stem).into());
                     };
                     child_entry.clone()
                 }
@@ -190,9 +190,9 @@ impl FormatE {
             // an error if we still have path left to look up
             if !child_entry.attrs.contains(Attributes::DIR) {
                 if stem == *path {
-                    return Ok(FaultValue::from(Ok(())));
+                    return Ok(FaultValue::from(()));
                 } else {
-                    return Ok(FaultValue::from(Err(IoError::InvalidTarget(stem))));
+                    return Err(IoError::InvalidTarget(stem).into());
                 }
             }
 
@@ -218,7 +218,7 @@ impl FormatE {
                 .borrow_mut()
                 .insert(stem, FileObject::LoadedDir(Box::new(child_directory)));
         }
-        Ok(FaultValue(Ok(()), overall_faults))
+        Ok(FaultValue((), overall_faults))
     }
 
     fn insert_dir_entry(tree: &mut FileTree, child: DirEntry, child_path: Path) {
@@ -258,33 +258,31 @@ impl FormatE {
         &self,
         path: &Path,
         dest: &mut dyn Write,
-    ) -> FaultableResult<'_, Result<DirEntry, IoError>> {
+    ) -> Result<FaultValue<DirEntry>, Error<'_>> {
         self.populate_path(path)?;
 
         // This should not be able to fail because we bailed if `populate_path` failed
         let fileobject = &self.tree.borrow()[path];
 
         let FileObject::File(dir_entry) = fileobject else {
-            return Ok(FaultValue::from(Err(IoError::InvalidTarget(path.clone()))));
+            return Err(IoError::InvalidTarget(path.clone()).into());
         };
 
         let region = match self.map.get_file_region(dir_entry) {
             Some(region) => region,
             None => {
-                return Ok(FaultValue::from(Err(IoError::MissingFragment(
-                    dir_entry.address,
-                ))));
+                return Err(IoError::MissingFragment(dir_entry.address).into());
             }
         };
 
         if let Err(e) = dest.write_all(&self.image[region]) {
-            return Ok(FaultValue::from(Err(IoError::StdError(e))));
+            return Err(IoError::StdError(e).into());
         }
 
-        Ok(FaultValue::from(Ok(dir_entry.clone())))
+        Ok(FaultValue::from(dir_entry.clone()))
     }
 
-    pub fn entries(&self, prefix: Option<Path>) -> impl Iterator<Item = Path> {
+    pub fn entries(&self, prefix: Option<Path>) -> Result<Vec<Path>, Error<'_>> {
         let prefix = prefix.unwrap_or(Path::ROOT_PATH);
 
         loop {
@@ -302,11 +300,7 @@ impl FormatE {
                 break;
             }
             for entry in sparse_entries {
-                let res = self.populate_path(&entry);
-                assert!(
-                    matches!(res, Ok(FaultValue(Ok(_), _))),
-                    "Unexpected fault populating file cache: {res:?}"
-                );
+                self.populate_path(&entry)?;
             }
         }
 
@@ -319,7 +313,7 @@ impl FormatE {
             .cloned()
             .collect();
 
-        entries.into_iter()
+        Ok(entries)
     }
 }
 

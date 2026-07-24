@@ -32,9 +32,9 @@ fn assert_format_e(path: &Path) {
     let mut entries = BTreeMap::new();
     let mut checksums = BTreeMap::new();
 
-    for f in disk.entries(None) {
+    for f in disk.entries(None).unwrap() {
         let mut contents = vec![];
-        let Ok(FaultValue(Ok(entry), _)) = disk.get_file(&f, &mut contents) else {
+        let Ok(FaultValue(entry, _)) = disk.get_file(&f, &mut contents) else {
             continue;
         };
         let crc = calculate_checksum(&contents);
