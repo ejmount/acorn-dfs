@@ -1,0 +1,42 @@
+use serde::Serialize;
+use winnow::Parser;
+use winnow::binary::{le_u8, le_u16};
+use winnow::combinator::{seq, trace};
+
+use super::super::util::InputStream;
+use crate::new_map::util::ParseResult;
+
+/// A prefix of a [`MapBlock`], containing various checks and the pointer to
+/// beginning of the free list
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct Header {
+    /// A checksum of the parent MapBlock
+    pub(crate) zone_check: u8,
+    /// Pointer to the first free fragment in this zone, relative to the
+    /// beginning of the same zone's allocation map
+    ///
+    /// The value that is stored on disk is described as:
+    /// offset in bits to first free space in zone, or 0 if none, with top
+    /// bit always set
+    /// https://www.chiark.greenend.org.uk/~theom/riscos/docs/ultimate/a252efmt.txt
+    ///
+    /// When actually parsed, we automatically lower the top bit
+    pub(crate) free_link: u16,
+    pub(crate) cross_check: u8,
+}
+
+impl Header {
+    pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
+        trace(
+            "Header",
+            seq! {
+                Header {
+                    zone_check: le_u8,
+                    free_link: le_u16.map(|n| n & 0x7FFF),
+                    cross_check: le_u8,
+                }
+            },
+        )
+        .parse_next(input)
+    }
+}

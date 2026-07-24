@@ -1,0 +1,194 @@
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::ops::Range;
+
+use winnow::Parser;
+use winnow::binary::bits::bits;
+use winnow::combinator::trace;
+use winnow::error::{ErrMode, FromExternalError};
+
+use super::super::Fault;
+use super::super::util::{BitInput, FragmentId, InputStream, ParseError, ParseResult};
+use super::fragment_block::FragmentBlock;
+use crate::new_map::util::{AllocationParsingParams, BitPosition};
+
+/// The Allocation Map represents how the space across the disk is assigned
+/// to "fragments," and is encoded as a *bit* stream with
+/// least-significant bits read first.
+///
+/// Each allocation within the disk is represented (in disk order) by a
+/// "fragment block," which consists of,
+/// 1. a [`FragmentId`], the length of which is defined by [`DiscRecord::idlen`]
+///    and which is built from the stream "least first"
+/// 2. some number of `0` bits
+/// 3. a terminating `1`
+///
+/// The *total* bit length (both idlen and terminating `1` included) of the
+/// fragment block is the number of "allocation units" that the allocation
+/// takes up on disk. The *log* of the size (in bytes) of a single
+/// allocation unit is defined by [`DiscRecord::log2_bytes_per_mapbit`].
+///
+/// The allocation map contains no *gaps* - every bit within it assigns disk
+/// space to some fragment - so some fragments are actually representing
+/// free space. This is constructed as a linked list:
+/// - the [`Header::free_link`] value is the offset, in bits, counting from zone
+///   byte `0x1` (i.e. the free link value itself) of the first fragment that is
+///   representing free space
+/// - each fragment in the list contains an ID that is an offset, in bits, from
+///   the beginning of that fragment to the beginning of the next one
+/// - the final fragment in the free list has ID 0
+///
+/// Multiple fragment blocks may have the same fragment ID, which means they
+/// represent discontiguous chunks of the same "disc object," e.g. a
+/// file
+#[derive(Clone)]
+pub struct AllocationMap {
+    pub(crate) fragments: HashMap<BitPosition, FragmentBlock>,
+    pub(crate) object_regions: HashMap<FragmentId, Vec<Range<usize>>>,
+}
+
+impl AllocationMap {
+    pub(crate) fn parse<'a>(
+        input: &mut InputStream<'a>,
+        params: &AllocationParsingParams,
+    ) -> ParseResult<'a, Self> {
+        trace(
+            "AllocationBytes",
+            move |input: &mut InputStream<'a>| -> Result<AllocationMap, ErrMode<ParseError<'a>>> {
+                let mut bits_remaining = params.mapped_space_in_alloc_units();
+
+                // The process here is to read and digest the entire collection of fragment
+                // blocks...
+                let mut fragments = bits(|input: &mut BitInput<'a>| -> Result<_, ErrMode<_>> {
+                    let mut fragments = HashMap::new();
+                    while bits_remaining > 0 {
+                        let fragment_block = FragmentBlock::parse(input, params)?;
+
+                        bits_remaining =
+                            bits_remaining.saturating_sub(fragment_block.map_length + 1);
+
+                        fragments.insert(fragment_block.position, fragment_block);
+                    }
+                    Ok(fragments)
+                })
+                .parse_next(input)?;
+
+                // ...and only after that, flag the ones that are part of the free list.
+                // (A free link of 0 would mean no free blocks.)
+                if params.free_link() != 0 {
+                    Self::walk_free_chain(&mut fragments, params.free_link())
+                        .map_err(|e| ErrMode::from_external_error(input, e))?;
+                }
+
+                let fragment_regions = Self::build_fragment_map(&fragments, params);
+
+                Ok(AllocationMap {
+                    fragments,
+                    object_regions: fragment_regions,
+                })
+            },
+        )
+        .parse_next(input)
+    }
+
+    /// Walks the list of free-space fragments beginning from the given
+    /// `free_link` value, modifying the appropriate fragments.
+    ///
+    /// This can fail if:
+    /// - [`Fault::InvalidFreeLink`]: the inital `free_link` does not point to a
+    ///   valid fragment
+    /// - [`Fault::BrokenFreeChain`]: one of the intermediate free fragments
+    ///   does not have a valid successor
+    pub(crate) fn walk_free_chain(
+        fragments: &mut HashMap<BitPosition, FragmentBlock>,
+        free_link: u16,
+    ) -> Result<(), Fault> {
+        let free_link_from_zero = 8 + free_link; // Free link value on disc is counting in bits from overall zone offset byte 0x01
+        let free_link_position = BitPosition::from_bits(free_link_from_zero as usize);
+        let head_fragment = fragments
+            .get_mut(&free_link_position)
+            .ok_or(Fault::InvalidFreeLink(free_link))?;
+        head_fragment.free_space = true;
+
+        let FragmentBlock {
+            id: mut cursor_id,
+            position: mut cursor_position,
+            ..
+        } = *head_fragment;
+
+        while cursor_id != 0 {
+            let dest_bit_offset = BitPosition::from_bits(cursor_id as _) + cursor_position;
+
+            let new_fragment =
+                fragments
+                    .get_mut(&dest_bit_offset)
+                    .ok_or(Fault::BrokenFreeChain {
+                        dest_bit_offset,
+                        origin: cursor_position,
+                    })?;
+            new_fragment.free_space = true;
+
+            FragmentBlock {
+                id: cursor_id,
+                position: cursor_position,
+                ..
+            } = *new_fragment;
+        }
+        Ok(())
+    }
+
+    /// Build the map of which disc regions belong to which disc objects, in
+    /// the proper order
+    pub(crate) fn build_fragment_map(
+        blocks: &HashMap<BitPosition, FragmentBlock>,
+        params: &AllocationParsingParams,
+    ) -> HashMap<FragmentId, Vec<Range<usize>>> {
+        let mut fragment_regions: HashMap<_, Vec<_>> = HashMap::new();
+        for block in blocks.values() {
+            fragment_regions
+                .entry(block.id)
+                .or_default()
+                .push(block.disk_region());
+        }
+        for (&fragment_id, v) in &mut fragment_regions {
+            // The regions need to be put in the order that results from searching for
+            // regions belonging to disc object F starting from the zone
+            // numbered `(F / ids per zone)` and wrapping around the end of the
+            // disc
+            //
+            // https://www.riscos.com/support/developers/prm/filecore.html#32170
+            v.sort_by_key(|id| {
+                let start = params.search_starting_point(fragment_id);
+                id.start.wrapping_sub(start) % params.total_disk_size
+            });
+        }
+        fragment_regions
+    }
+
+    /// Get the FragmentBlock of the given ID.
+    ///
+    /// Currently O(n) w.r.t. how many fragments there are
+    pub fn get_fragment(&self, id: FragmentId) -> Option<&FragmentBlock> {
+        // TODO: Object 2, being the object which carries the map with it, is special.
+        // It is always at the beginning of the middle zone, as opposed to being
+        // at the beginning of zone 0.
+        self.fragments
+            .iter()
+            .find_map(|(_, f)| (f.id == id).then_some(f))
+    }
+}
+
+impl Debug for AllocationMap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut f = f.debug_struct("AllocationMap");
+
+        let mut blocks: Vec<_> = self.fragments.iter().collect();
+        blocks.sort_by_key(|bp| bp.0);
+        f.field("blocks", &blocks);
+
+        let mut fragment_regions: Vec<_> = self.object_regions.iter().collect();
+        fragment_regions.sort_by_key(|(k, _)| **k);
+        f.field("fragment_regions", &fragment_regions);
+        f.finish()
+    }
+}

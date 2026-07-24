@@ -11,7 +11,7 @@ use winnow::Parser;
 use winnow::combinator::{opt, preceded, separated, terminated};
 use winnow::stream::Stream;
 
-use super::disc_structures::NewMap;
+use super::disc_structures::new_map::NewMap;
 use super::filesystem::{Attributes, DirEntry, Directory};
 use super::util::{DiscPosition, FaultableResult, FixedLenString, ParseResult, make_input};
 use super::{Error, Fault, FaultValue, IoError};
