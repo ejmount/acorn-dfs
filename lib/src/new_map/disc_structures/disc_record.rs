@@ -82,3 +82,9 @@ impl DiscRecord {
         .parse_next(input)
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DrInclusion {
+    WithDiscRecord,
+    WithoutDiscRecord,
+}

@@ -15,7 +15,7 @@ use winnow::stream::{Location, Stream};
 use winnow::token::take;
 use winnow::{BStr, LocatingSlice, ModalResult, Parser};
 
-use super::disc_structures::disc_record::DiscRecord;
+use super::disc_structures::disc_record::{DiscRecord, DrInclusion};
 use super::{Fault, FaultValue};
 
 /// The input used for parsing most structures on disk with winnow combinators.
@@ -99,12 +99,12 @@ pub(crate) struct AllocationParsingParams {
 
 impl AllocationParsingParams {
     pub fn new(
-        zone_includes_map: bool,
+        zone_includes_map: DrInclusion,
         free_link: u16,
         disk: &DiscRecord,
     ) -> AllocationParsingParams {
         let orig_zone_size = disk.zone_size_in_bytes();
-        let zone_size_in_bytes = if zone_includes_map {
+        let zone_size_in_bytes = if zone_includes_map == DrInclusion::WithDiscRecord {
             orig_zone_size - (disk.num_zones as usize * disk.sector_size_in_bytes())
         } else {
             orig_zone_size

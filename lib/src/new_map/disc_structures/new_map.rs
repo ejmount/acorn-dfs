@@ -11,6 +11,7 @@ use super::disc_record::DiscRecord;
 use super::fragment_block::FragmentBlock;
 use super::map_block::MapBlock;
 use crate::new_map::FaultValue;
+use crate::new_map::disc_structures::disc_record::DrInclusion;
 use crate::new_map::util::{FaultableResult, FragmentId};
 
 /// The "new"-style file allocation map structure, used by format E and F
@@ -42,12 +43,13 @@ impl NewMap {
     pub fn parse<'a>(input: &mut InputStream<'a>, num_zones: usize) -> FaultableResult<'a, Self> {
         assert!(num_zones > 0);
         let FaultValue((leading_block, disc_record), mut faults) =
-            MapBlock::parse_with_disc_record(true, input)?;
+            MapBlock::parse_with_disc_record(input)?;
 
         let mut blocks = vec![leading_block];
 
         for _ in 0..(num_zones - 1) {
-            let FaultValue(block, sub_faults) = MapBlock::parse(input, false, &disc_record)?;
+            let FaultValue(block, sub_faults) =
+                MapBlock::parse(input, DrInclusion::WithoutDiscRecord, &disc_record)?;
             faults.extend(sub_faults);
             blocks.push(block);
         }

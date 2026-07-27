@@ -6,7 +6,7 @@ use winnow::token::take;
 
 use super::allocation_map::AllocationMap;
 use super::disc_header::Header;
-use super::disc_record::DiscRecord;
+use super::disc_record::{DiscRecord, DrInclusion};
 use super::fragment_block::FragmentBlock;
 use crate::new_map::util::{
     AllocationParsingParams,
@@ -39,7 +39,7 @@ pub(crate) struct MapBlock {
 impl MapBlock {
     pub(crate) fn parse<'a>(
         input: &mut InputStream<'a>,
-        includes_map: bool,
+        includes_map: DrInclusion,
         disc: &DiscRecord,
     ) -> FaultableResult<'a, Self> {
         let header = Header::parse(input)?;
@@ -60,14 +60,17 @@ impl MapBlock {
         .into())
     }
     pub(crate) fn parse_with_disc_record<'a>(
-        includes_map: bool,
         input: &'_ mut InputStream<'a>,
     ) -> FaultableResult<'a, (Self, DiscRecord)> {
         let sector_start = input.checkpoint();
 
         let header = Header::parse(input)?;
         let disc_record = DiscRecord::parse(input)?;
-        let params = AllocationParsingParams::new(includes_map, header.free_link, &disc_record);
+        let params = AllocationParsingParams::new(
+            DrInclusion::WithDiscRecord,
+            header.free_link,
+            &disc_record,
+        );
         let allocations = AllocationMap::parse(input, &params)?;
         let _unused = take_rest_of_sector(input, disc_record.sector_size_in_bytes())?.to_vec();
 
