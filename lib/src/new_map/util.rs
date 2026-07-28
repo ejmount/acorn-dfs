@@ -128,10 +128,6 @@ impl AllocationParsingParams {
     fn zone_size(&self) -> usize {
         self.total_disk_size / self.zone_count
     }
-    pub(crate) fn search_starting_point(&self, f: FragmentId) -> usize {
-        let zone_idx = f as usize / self.ids_per_zone;
-        zone_idx * self.zone_size()
-    }
 
     pub fn sector_size(&self) -> usize {
         self.sector_size

@@ -80,7 +80,7 @@ impl AllocationMap {
                         .map_err(|e| ErrMode::from_external_error(input, e))?;
                 }
 
-                let fragment_regions = Self::build_fragment_map(&fragments, params);
+                let fragment_regions = Self::build_fragment_map(&fragments);
 
                 Ok(AllocationMap {
                     fragments,
@@ -137,11 +137,9 @@ impl AllocationMap {
         Ok(())
     }
 
-    /// Build the map of which disc regions belong to which disc objects, in
-    /// the proper order
+    /// Build the map of which disc regions belong to which disc objects.
     pub(crate) fn build_fragment_map(
         blocks: &HashMap<BitPosition, FragmentBlock>,
-        params: &AllocationParsingParams,
     ) -> HashMap<FragmentId, Vec<Range<usize>>> {
         let mut fragment_regions: HashMap<_, Vec<_>> = HashMap::new();
         for block in blocks.values() {
@@ -149,18 +147,6 @@ impl AllocationMap {
                 .entry(block.id)
                 .or_default()
                 .push(block.disk_region());
-        }
-        for (&fragment_id, v) in &mut fragment_regions {
-            // The regions need to be put in the order that results from searching for
-            // regions belonging to disc object F starting from the zone
-            // numbered `(F / ids per zone)` and wrapping around the end of the
-            // disc
-            //
-            // https://www.riscos.com/support/developers/prm/filecore.html#32170
-            v.sort_by_key(|id| {
-                let start = params.search_starting_point(fragment_id);
-                id.start.wrapping_sub(start) % params.total_disk_size
-            });
         }
         fragment_regions
     }
