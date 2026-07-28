@@ -68,11 +68,11 @@ pub enum Fault {
 pub enum IoError {
     #[error("Could not find indirect disc position {:?}", .0)]
     MissingFragment(DiscPosition),
-    #[error("No entity with path {}", .0)]
+    #[error("No entry with path {}", .0)]
     MissingTarget(Path),
     #[error("Path {} did exist but did not have requested type", .0)]
     InvalidTarget(Path),
-    #[error("IO failure: {}", .0)]
+    #[error("Underlying IO failure: {}", .0)]
     StdError(std::io::Error),
 }
 
