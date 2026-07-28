@@ -34,20 +34,21 @@ fn parse_magic_string<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, ()> {
         .parse_next(input)
 }
 
-const SIZE_OF_DIRECTORY: usize = 77;
 #[derive(Debug, Clone)]
 pub struct Directory {
     pub(crate) header: DirHeader,
-    pub(crate) entries: ArrayVec<DirEntry, SIZE_OF_DIRECTORY>,
+    pub(crate) entries: ArrayVec<DirEntry, { Self::DIRECTORY_CAPACITY }>,
     pub(crate) tail: DirTail,
 }
 impl Directory {
+    pub(crate) const DIRECTORY_CAPACITY: usize = 77;
+
     pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
         trace("Directory", |input: &mut InputStream<'a>| {
             let (header, start_data) = DirHeader::parse.with_taken().parse_next(input)?;
 
             let results: Vec<_> = repeat(
-                SIZE_OF_DIRECTORY,
+                Self::DIRECTORY_CAPACITY,
                 trace("DirEntry", DirEntry::parse.with_taken()),
             )
             .parse_next(input)?;
