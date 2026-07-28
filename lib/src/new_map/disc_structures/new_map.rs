@@ -5,7 +5,6 @@ use serde::Serialize;
 use super::super::Fault;
 use super::super::filesystem::DirEntry;
 use super::super::util::InputStream;
-use super::EXPECTED_CROSS_CHECK;
 use super::allocation_map::AllocationMap;
 use super::disc_record::DiscRecord;
 use super::fragment_block::FragmentBlock;
@@ -13,6 +12,11 @@ use super::map_block::MapBlock;
 use crate::new_map::FaultValue;
 use crate::new_map::disc_structures::disc_record::DrInclusion;
 use crate::new_map::util::{FaultableResult, FragmentId};
+
+/// The xor of the cross check header values should be this value
+///
+/// https://www.riscos.com/support/developers/prm/filecore.html#98861
+const EXPECTED_CROSS_CHECK: u8 = 0xFF;
 
 /// The "new"-style file allocation map structure, used by format E and F
 /// disks.
