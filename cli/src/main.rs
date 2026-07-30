@@ -19,7 +19,9 @@ struct Args {
 
 #[derive(Debug, Clone, Parser)]
 pub enum Verb {
+    /// Output the disc record of the given image
     Meta,
+    /// Extract a single file from the given path to a given host file
     #[command(id = "extract")]
     ExtractFile {
         #[arg(short, long)]
@@ -28,9 +30,10 @@ pub enum Verb {
         #[arg(short, long)]
         destination: OsPath,
     },
-    ExtractAll {
-        destination_folder: OsPath,
-    },
+    /// Extract all files to the given folder
+    ExtractAll { destination_folder: OsPath },
+    /// List files on the disk image that begin with the given prefix. (Leave
+    /// empty for all files.)
     List {
         #[arg(short, long)]
         #[arg(value_parser = Path::try_from_str)]
