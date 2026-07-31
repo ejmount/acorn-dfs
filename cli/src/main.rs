@@ -3,7 +3,7 @@ use std::ops::Deref;
 use std::path::PathBuf as OsPath;
 
 use acorn_dfs::new_map::filesystem::DirEntry;
-use acorn_dfs::new_map::sys_structures::FormatE;
+use acorn_dfs::new_map::sys_structures::NewMapDisk;
 use acorn_dfs::new_map::{FaultValue, Path};
 use clap::Parser;
 use mmap_io::MemoryMappedFile;
@@ -65,7 +65,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let contents = src;
 
-    let maybe_disk = FormatE::parse(&contents);
+    let maybe_disk = NewMapDisk::parse(&contents);
 
     let mut disk = match maybe_disk {
         Ok(disk) => disk,
@@ -124,7 +124,7 @@ fn read_file(path: &OsStr) -> Result<DataSource, std::io::Error> {
 }
 
 fn write_file_plus_metadata(
-    disk: &FormatE,
+    disk: &NewMapDisk,
     destination: OsPath,
     path: &Path,
 ) -> Result<(), std::io::Error> {
@@ -171,7 +171,7 @@ fn convert_path_to_os(p: Path) -> OsPath {
     os_path
 }
 
-fn extract_disk(disk: &mut FormatE, destination: OsPath) {
+fn extract_disk(disk: &mut NewMapDisk, destination: OsPath) {
     let keys: Vec<_> = disk.entries(None).unwrap();
 
     for path in keys {

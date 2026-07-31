@@ -29,7 +29,7 @@ pub enum FileObject {
     File(DirEntry),
 }
 
-/// Represents the parsed contents of a ADFS format-E disk.
+/// Represents the parsed contents of a ADFS "new map" (format E or F) disk.
 ///
 /// The data between the fields of this structure are slightly redundant - the
 /// `image` field contains the disk bytes, but other structures contain the same
@@ -37,7 +37,7 @@ pub enum FileObject {
 /// to ever be big enough for the redundancy to be a significant performance
 /// problem.
 #[derive(Clone)]
-pub struct FormatE {
+pub struct NewMapDisk {
     /// The raw disk bytes.
     pub image: Vec<u8>,
     /// The parsed "Map" structure, effectively the superblock
@@ -49,7 +49,7 @@ pub struct FormatE {
     /// includes validation failures, etc.
     pub faults: Vec<Fault>,
 }
-impl Debug for FormatE {
+impl Debug for NewMapDisk {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FormatE")
             .field("map", &self.map)
@@ -60,7 +60,7 @@ impl Debug for FormatE {
     }
 }
 
-impl FormatE {
+impl NewMapDisk {
     // Entry point for creating Format-E disks. The resulting structure does not
     // populate the file tree.
     pub fn parse<'a>(bytes: &'a [u8]) -> ParseResult<'a, Self> {
@@ -75,7 +75,7 @@ impl FormatE {
 
         faults.extend(root_faults);
 
-        Ok(FormatE {
+        Ok(NewMapDisk {
             image,
             map,
             tree: RefCell::new(tree),

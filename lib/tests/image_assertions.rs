@@ -3,7 +3,7 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use acorn_dfs::new_map::FaultValue;
-use acorn_dfs::new_map::sys_structures::FormatE;
+use acorn_dfs::new_map::sys_structures::NewMapDisk;
 use insta::{assert_debug_snapshot, with_settings};
 
 #[test]
@@ -15,9 +15,9 @@ fn format_e_images() {
     }
 }
 
-fn load_format_e(path: &Path) -> FormatE {
+fn load_format_e(path: &Path) -> NewMapDisk {
     let contents = std::fs::read(path).unwrap();
-    FormatE::parse(&contents).unwrap()
+    NewMapDisk::parse(&contents).unwrap()
 }
 
 fn calculate_checksum(contents: &[u8]) -> u32 {
