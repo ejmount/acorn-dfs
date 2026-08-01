@@ -1,5 +1,5 @@
-/// Types and functions that do not directly correspond to system entities, on
-/// disk or otherwise, but are still used frequently
+//! Types and functions that do not directly correspond to system entities, on
+//! disk or otherwise, but are still used frequently
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display};
 use std::hash::{Hash, Hasher};

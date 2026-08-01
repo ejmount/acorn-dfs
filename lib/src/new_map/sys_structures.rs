@@ -1,5 +1,5 @@
-/// Structures that represent bookkeeping that the program is doing but which
-/// does not map immediately to disk structures
+//! Structures that represent bookkeeping that the program is doing but which
+//! does not map immediately to disk structures
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::BTreeMap;

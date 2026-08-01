@@ -1,5 +1,5 @@
-// Structures representing repeating features within the filesystem, including
-// directory records, file attribute flags, etc.
+//! Structures representing repeating features within the filesystem, including
+//! directory records, file attribute flags, etc.
 
 use arrayvec::ArrayVec;
 use winnow::Parser;
