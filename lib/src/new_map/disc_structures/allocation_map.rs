@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::ops::Range;
 
 use winnow::Parser;
 use winnow::binary::bits::bits;
@@ -44,7 +43,6 @@ use crate::new_map::util::{AllocationParsingParams, BitPosition};
 #[derive(Clone)]
 pub struct AllocationMap {
     pub(crate) fragments: HashMap<BitPosition, FragmentBlock>,
-    pub(crate) object_regions: HashMap<FragmentId, Vec<Range<usize>>>,
 }
 
 impl AllocationMap {
@@ -80,12 +78,7 @@ impl AllocationMap {
                         .map_err(|e| ErrMode::from_external_error(input, e))?;
                 }
 
-                let fragment_regions = Self::build_fragment_map(&fragments);
-
-                Ok(AllocationMap {
-                    fragments,
-                    object_regions: fragment_regions,
-                })
+                Ok(AllocationMap { fragments })
             },
         )
         .parse_next(input)
@@ -137,20 +130,6 @@ impl AllocationMap {
         Ok(())
     }
 
-    /// Build the map of which disc regions belong to which disc objects.
-    pub(crate) fn build_fragment_map(
-        blocks: &HashMap<BitPosition, FragmentBlock>,
-    ) -> HashMap<FragmentId, Vec<Range<usize>>> {
-        let mut fragment_regions: HashMap<_, Vec<_>> = HashMap::new();
-        for block in blocks.values() {
-            fragment_regions
-                .entry(block.id)
-                .or_default()
-                .push(block.disk_region());
-        }
-        fragment_regions
-    }
-
     /// Get the FragmentBlock of the given ID.
     pub fn get_fragment(&self, id: FragmentId) -> Option<&FragmentBlock> {
         self.fragments
@@ -167,9 +146,6 @@ impl Debug for AllocationMap {
         blocks.sort_by_key(|bp| bp.0);
         f.field("blocks", &blocks);
 
-        let mut fragment_regions: Vec<_> = self.object_regions.iter().collect();
-        fragment_regions.sort_by_key(|(k, _)| **k);
-        f.field("fragment_regions", &fragment_regions);
         f.finish()
     }
 }
