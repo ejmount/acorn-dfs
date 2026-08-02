@@ -66,12 +66,14 @@ pub enum Fault {
 
 #[derive(Error, Debug)]
 pub enum IoError {
-    #[error("Could not find indirect disc position {:?}", .0)]
+    #[error("Could not find disc object ID {:?}", .0)]
     MissingFragment(DiscPosition),
     #[error("No entry with path {}", .0)]
     MissingTarget(Path),
     #[error("Path {} did exist but did not have requested type", .0)]
     InvalidTarget(Path),
+    #[error("Insufficient data to read {length} byes from fragment {}, sector offset {}",  object.fragment(), object.sector_idx())]
+    OutOfBounds { object: DiscPosition, length: usize },
     #[error("Underlying IO failure: {}", .0)]
     StdError(std::io::Error),
 }
