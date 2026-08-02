@@ -37,6 +37,8 @@ pub(crate) struct DiscRecord {
 }
 
 impl DiscRecord {
+    pub(crate) const LENGTH: usize = 60;
+
     pub(crate) fn sector_size_in_bytes(&self) -> usize {
         2usize.pow(self.log2_sec_size as _)
     }

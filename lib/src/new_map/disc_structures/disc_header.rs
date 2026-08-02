@@ -27,6 +27,7 @@ pub(crate) struct Header {
 }
 
 impl Header {
+    pub(crate) const LENGTH: usize = 4;
     pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
         trace(
             "Header",

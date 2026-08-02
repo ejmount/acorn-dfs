@@ -42,6 +42,8 @@ pub struct Directory {
 }
 impl Directory {
     pub(crate) const DIRECTORY_CAPACITY: usize = 77;
+    pub(crate) const LENGTH: usize =
+        DirHeader::LENGTH + Self::DIRECTORY_CAPACITY * DirEntry::LENGTH + DirTail::LENGTH;
 
     pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
         trace("Directory", |input: &mut InputStream<'a>| {
@@ -138,6 +140,8 @@ pub(crate) struct DirHeader {
     start_seq_num: u8,
 }
 impl DirHeader {
+    pub(crate) const LENGTH: usize = 1;
+
     fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, DirHeader> {
         trace(
             "DirHeader",
@@ -162,6 +166,7 @@ pub struct DirEntry {
     pub attrs: Attributes,
 }
 impl DirEntry {
+    pub(crate) const LENGTH: usize = MAX_SEGMENT_LENGTH + 4 + 4 + 4 + DiscPosition::LENGTH + 1;
     fn parse<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
         let obj_name = trace("obj_name", FixedLenString::parse_from_disk).parse_next(input)?;
         let load = trace("load", le_u32).parse_next(input)?;
@@ -199,6 +204,7 @@ pub(crate) struct DirTail {
     check_byte: u8,
 }
 impl DirTail {
+    const LENGTH: usize = 4 + MAX_TITLE_LENGTH + MAX_SEGMENT_LENGTH + 1 + 1;
     fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, DirTail> {
         trace(
             "DirTail",
