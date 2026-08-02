@@ -152,12 +152,7 @@ impl AllocationMap {
     }
 
     /// Get the FragmentBlock of the given ID.
-    ///
-    /// Currently O(n) w.r.t. how many fragments there are
     pub fn get_fragment(&self, id: FragmentId) -> Option<&FragmentBlock> {
-        // TODO: Object 2, being the object which carries the map with it, is special.
-        // It is always at the beginning of the middle zone, as opposed to being
-        // at the beginning of zone 0.
         self.fragments
             .iter()
             .find_map(|(_, f)| (f.id == id).then_some(f))

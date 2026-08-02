@@ -19,7 +19,7 @@ pub struct FragmentBlock {
     pub(crate) free_space: bool,
     /// The length, in bits this block takes up inside the `AllocationMap`
     pub(crate) map_length: usize,
-    /// the position within the *overall disk* this block starts at
+    /// the position within the map block sector this block starts at.
     pub(crate) position: BitPosition,
     /// the range of bytes on disk this fragment is defining
     pub(crate) disk_region: Range<usize>,

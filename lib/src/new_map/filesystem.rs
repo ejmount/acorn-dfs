@@ -189,6 +189,7 @@ impl DirEntry {
     }
 }
 
+#[expect(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct DirTail {
     parent: DiscPosition,

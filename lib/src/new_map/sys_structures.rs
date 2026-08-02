@@ -208,6 +208,7 @@ impl NewMapDisk {
             // If the new entry has fault codes, store those
             overall_faults.extend(faults);
 
+            // Populate entries (potentially sparse ones) for the path's children
             for child in &child_directory.entries {
                 let child_path = stem.clone().append(child.obj_name);
                 Self::insert_dir_entry(&mut self.tree.borrow_mut(), child.clone(), child_path);

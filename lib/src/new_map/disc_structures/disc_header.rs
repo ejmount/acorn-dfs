@@ -12,8 +12,8 @@ use crate::new_map::util::ParseResult;
 pub(crate) struct Header {
     /// A checksum of the parent MapBlock
     pub(crate) zone_check: u8,
-    /// Pointer to the first free fragment in this zone, relative to the
-    /// beginning of the same zone's allocation map
+    /// Pointer to the first free fragment in this zone, relative to itself,
+    /// i.e. from the first byte of the same zone's map sector.
     ///
     /// The value that is stored on disk is described as:
     /// offset in bits to first free space in zone, or 0 if none, with top
@@ -22,6 +22,7 @@ pub(crate) struct Header {
     ///
     /// When actually parsed, we automatically lower the top bit
     pub(crate) free_link: u16,
+    /// Coherency check between all zones
     pub(crate) cross_check: u8,
 }
 

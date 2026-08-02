@@ -38,7 +38,7 @@ pub(crate) struct DiscRecord {
 
 impl DiscRecord {
     pub(crate) fn sector_size_in_bytes(&self) -> usize {
-        2u32.pow(self.log2_sec_size as _) as _
+        2usize.pow(self.log2_sec_size as _)
     }
     pub(crate) fn zone_size_in_bytes(&self) -> usize {
         (self.size / self.num_zones as u32) as _

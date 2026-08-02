@@ -30,7 +30,7 @@ const EXPECTED_CROSS_CHECK: u8 = 0xFF;
 ///
 /// In practice, we ignore the DR being part of the first MB and instead
 /// represent it at the higher level as part of the overall Map, which
-/// allows handling for the MapBlocks to be uniform.
+/// allows handling for the MapBlocks to be (relatively) uniform.
 #[derive(Debug, Clone, Serialize)]
 pub struct NewMap {
     /// Various metadata defining the goemetry of the disc
