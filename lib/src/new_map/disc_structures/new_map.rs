@@ -65,13 +65,16 @@ impl NewMap {
     }
 
     pub(crate) fn get_disc_object(&self, position: DiscPosition) -> Result<DiscObject, IoError> {
-        let mut total_fragments = vec![];
-        for block in &self.blocks {
-            let fragments = block.get_fragments(position.fragment());
-            total_fragments.extend(fragments);
+        let mut fragments = vec![];
+        for (zone_id, block) in self.blocks.iter().enumerate() {
+            let fragments_with_zone = block
+                .get_fragments(position.fragment())
+                .into_iter()
+                .map(|i| (zone_id, i));
+            fragments.extend(fragments_with_zone);
         }
-        if !total_fragments.is_empty() {
-            Ok(DiscObject::new(total_fragments, &self.disc_record))
+        if !fragments.is_empty() {
+            Ok(DiscObject::new(fragments, &self.disc_record))
         } else {
             Err(IoError::MissingFragment(position))
         }

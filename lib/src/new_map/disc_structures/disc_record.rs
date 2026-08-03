@@ -43,18 +43,46 @@ impl DiscRecord {
     pub(crate) fn sector_size_in_bytes(&self) -> usize {
         2usize.pow(self.log2_sec_size as _)
     }
-
-    pub(crate) fn bytes_per_map_bit(&self) -> usize {
-        2usize.pow(self.log2_bytes_per_mapbit as _) as _
+    pub(crate) fn ids_per_zone(&self) -> usize {
+        ((1 << (self.log2_sec_size as usize + 3)) - self.zone_spare as usize)
+            / (self.idlen as usize + 1)
     }
     pub(crate) fn zone_trailing_bytes(&self) -> usize {
         (self.zone_spare as usize - 8 * Header::LENGTH) / 8
     }
+    pub(crate) fn allocation_map_size(&self, dr: DrInclusion) -> usize {
+        self.sector_size_in_bytes()
+            - Header::LENGTH
+            - if dr == DrInclusion::WithDiscRecord {
+                DiscRecord::LENGTH
+            } else {
+                0
+            }
+            - self.zone_trailing_bytes()
+    }
+
+    pub(crate) fn bytes_per_map_bit(&self) -> usize {
+        2usize.pow(self.log2_bytes_per_mapbit as _) as _
+    }
+    pub(crate) fn zone_size_in_bytes(&self, dr: DrInclusion) -> usize {
+        self.bytes_per_map_bit() * 8 * self.allocation_map_size(dr)
+    }
+
     pub(crate) fn test_sector_size(s: u8) -> Result<u8, Fault> {
         if !STRICT_MODE || [8, 9, 10, 11].contains(&s) {
             Ok(s)
         } else {
             Err(Fault::UnacceptableSectorSize(s))
+        }
+    }
+    pub(crate) fn get_zone_offset(&self, idx: usize) -> usize {
+        match idx {
+            0 => 0,
+            1 => self.zone_size_in_bytes(DrInclusion::WithDiscRecord),
+            n => {
+                (n - 1) * self.zone_size_in_bytes(DrInclusion::WithoutDiscRecord)
+                    + self.zone_size_in_bytes(DrInclusion::WithDiscRecord)
+            }
         }
     }
     pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
