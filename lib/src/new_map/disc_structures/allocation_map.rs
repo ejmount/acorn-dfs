@@ -130,11 +130,13 @@ impl AllocationMap {
         Ok(())
     }
 
-    /// Get the FragmentBlock of the given ID.
-    pub fn get_fragment(&self, id: FragmentId) -> Option<&FragmentBlock> {
+    /// Get the FragmentBlock(s) of the given ID.
+    pub fn get_fragments(&self, id: FragmentId) -> Vec<FragmentBlock> {
         self.fragments
-            .iter()
-            .find_map(|(_, f)| (f.id == id).then_some(f))
+            .values()
+            .filter(|f| f.id == id)
+            .copied()
+            .collect()
     }
 }
 

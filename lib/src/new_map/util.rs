@@ -89,7 +89,6 @@ pub(crate) fn take_ls_bit<'a>(input: &mut BitInput<'a>) -> ModalResult<bool, Bit
 pub(crate) struct AllocationParsingParams {
     pub(crate) mapped_space_in_alloc_units: usize,
     pub(crate) fragment_id_length: usize,
-    pub(crate) log_bytes_per_alloc: usize,
     pub(crate) sector_size: usize,
     pub(crate) free_link: u16,
     pub(crate) zone_count: usize,
@@ -117,7 +116,6 @@ impl AllocationParsingParams {
         AllocationParsingParams {
             mapped_space_in_alloc_units,
             fragment_id_length: disk.idlen as _,
-            log_bytes_per_alloc: disk.log2_bytes_per_mapbit as _,
             sector_size: disk.sector_size_in_bytes(),
             free_link,
             total_disk_size: disk.size as _,
@@ -132,9 +130,7 @@ impl AllocationParsingParams {
     pub fn sector_size(&self) -> usize {
         self.sector_size
     }
-    pub fn bytes_per_alloc_unit(&self) -> usize {
-        2usize.pow(self.log_bytes_per_alloc as _)
-    }
+
     pub fn mapped_space_in_alloc_units(&self) -> usize {
         self.mapped_space_in_alloc_units
     }

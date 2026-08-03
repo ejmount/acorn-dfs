@@ -12,6 +12,7 @@ const ALLOCATION_MAP_START_IN_BITS: usize = (3 + 61) * 8;
 
 pub(crate) mod allocation_map;
 pub(crate) mod disc_header;
+pub(crate) mod disc_object;
 pub(crate) mod disc_record;
 pub(crate) mod fragment_block;
 pub(crate) mod map_block;

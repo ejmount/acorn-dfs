@@ -1,4 +1,5 @@
-use std::ops::{BitXor, Range};
+use std::ops::BitXor;
+use std::range::Range;
 
 use serde::Serialize;
 
@@ -6,12 +7,12 @@ use super::super::Fault;
 use super::super::filesystem::DirEntry;
 use super::super::util::InputStream;
 use super::allocation_map::AllocationMap;
+use super::disc_object::DiscObject;
 use super::disc_record::DiscRecord;
-use super::fragment_block::FragmentBlock;
 use super::map_block::MapBlock;
-use crate::new_map::FaultValue;
 use crate::new_map::disc_structures::disc_record::DrInclusion;
-use crate::new_map::util::{FaultableResult, FragmentId};
+use crate::new_map::util::{DiscPosition, FaultableResult};
+use crate::new_map::{FaultValue, IoError};
 
 /// The xor of the cross check header values should be this value
 ///
@@ -73,36 +74,34 @@ impl NewMap {
         &self.disc_record
     }
 
-    pub(crate) fn get_allocation(&self, idx: usize) -> &AllocationMap {
-        &self.blocks[idx].allocations
-    }
-    pub(crate) fn get_fragment(&self, id: FragmentId) -> Option<&FragmentBlock> {
-        // TODO: Update this for multiple zones
-        let mut fragment = self.blocks[0].get_fragment(id);
-        for b in &self.blocks {
-            fragment = fragment.or(b.get_fragment(id))
+    pub(crate) fn get_disc_object(&self, position: DiscPosition) -> Result<DiscObject, IoError> {
+        let mut total_fragments = vec![];
+        for block in &self.blocks {
+            let fragments = block.get_fragments(position.fragment());
+            total_fragments.extend(fragments);
         }
-        fragment
+        if !total_fragments.is_empty() {
+            Ok(DiscObject::new(total_fragments, &self.disc_record))
+        } else {
+            Err(IoError::MissingFragment(position))
+        }
     }
-    pub(crate) fn get_file_region(&self, dir_entry: &DirEntry) -> Option<Range<usize>> {
+    pub(crate) fn get_file_regions(
+        &self,
+        dir_entry: &DirEntry,
+    ) -> Result<Vec<Range<usize>>, IoError> {
         let position = dir_entry.address;
-        let fragment = self.get_fragment(position.fragment())?;
+        let disc_object = self.get_disc_object(position)?;
 
         let sector_number = position.sector_idx();
-        let sector_size = self.disc_record.sector_size_in_bytes();
-        let byte_offset: usize = sector_number as usize * sector_size;
+        let regions = disc_object
+            .get_disc_regions(sector_number as _, dir_entry.len as _)
+            .ok_or(IoError::OutOfBounds {
+                object: position,
+                length: dir_entry.len as _,
+            })?;
 
-        let Range { start, end } = fragment.disk_region();
-        let start = start + byte_offset;
-        let end = end.min(start + dir_entry.len as usize);
-
-        debug_assert!(
-            (end - start) == dir_entry.len as usize,
-            "Region ({start}..{end}) does not match file length {}",
-            dir_entry.len
-        );
-
-        Some(Range { start, end })
+        Ok(regions)
     }
 
     pub fn cross_check(&self) -> u8 {

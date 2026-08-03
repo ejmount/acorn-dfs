@@ -104,8 +104,8 @@ impl MapBlock {
             faults,
         ))
     }
-    pub(crate) fn get_fragment(&self, id: FragmentId) -> Option<&FragmentBlock> {
-        self.allocations.get_fragment(id)
+    pub(crate) fn get_fragments(&self, id: FragmentId) -> Vec<FragmentBlock> {
+        self.allocations.get_fragments(id)
     }
 
     /// Zone checksum

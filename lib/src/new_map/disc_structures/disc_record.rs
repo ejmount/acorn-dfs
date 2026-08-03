@@ -13,8 +13,8 @@ use super::super::{Fault, STRICT_MODE};
 /// 1. `log2_sec_size`: the sector size, stored in its base-2 log form
 /// 2. `idlen`: the length of a [`FragmentId`], in bits
 /// 3. `root_dir`: the position of the root directory record, as a byte offset
-/// 4. `size`: the total size of the disk, which then dictates how large the
-///    Allocation Map is
+/// 4. `log2_bytes_per_mapbit` - the number of bytes represented by each bit in
+///    the Allocation Map
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct DiscRecord {
     pub(crate) log2_sec_size: u8,
@@ -48,6 +48,9 @@ impl DiscRecord {
     pub(crate) fn ids_per_zone(&self) -> usize {
         ((1 << (self.log2_sec_size as usize + 3)) - self.zone_spare as usize)
             / (self.idlen as usize + 1)
+    }
+    pub(crate) fn bytes_per_map_bit(&self) -> usize {
+        2usize.pow(self.log2_bytes_per_mapbit as _) as _
     }
     pub(crate) fn test_sector_size(s: u8) -> Result<u8, Fault> {
         if !STRICT_MODE || [8, 9, 10, 11].contains(&s) {

@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::io::Write;
 use std::ops::Index;
+use std::range::Range;
 
 use winnow::Parser;
 use winnow::combinator::{opt, preceded, separated, terminated};
@@ -13,7 +14,7 @@ use winnow::stream::Stream;
 
 use super::disc_structures::new_map::NewMap;
 use super::filesystem::{Attributes, DirEntry, Directory};
-use super::util::{DiscPosition, FaultableResult, FixedLenString, ParseResult, make_input};
+use super::util::{DiscPosition, FixedLenString, make_input};
 use super::{Error, Fault, FaultValue, IoError};
 
 type FileTree = BTreeMap<Path, FileObject>;
@@ -63,7 +64,7 @@ impl Debug for NewMapDisk {
 impl NewMapDisk {
     // Entry point for creating Format-E disks. The resulting structure does not
     // populate the file tree.
-    pub fn parse<'a>(bytes: &'a [u8]) -> ParseResult<'a, Self> {
+    pub fn parse<'a>(bytes: &'a [u8]) -> Result<Self, Error<'a>> {
         let image = bytes.to_vec();
         let mut input = make_input(bytes);
         let FaultValue(map, mut faults) = NewMap::parse(&mut input, 1)?;
@@ -90,7 +91,7 @@ impl NewMapDisk {
     fn create_initial_file_tree<'a>(
         image: &'a [u8],
         map: &NewMap,
-    ) -> FaultableResult<'a, FileTree> {
+    ) -> Result<FaultValue<FileTree>, Error<'a>> {
         let mut tree = FileTree::new();
         let mut faults = vec![];
 
@@ -100,7 +101,6 @@ impl NewMapDisk {
             map,
             image,
             root_link,
-            sector_size,
             Fault::InvalidRoot {
                 root_link,
                 sector_size,
@@ -202,7 +202,6 @@ impl NewMapDisk {
                 &self.map,
                 &self.image,
                 child_entry.address,
-                self.map.get_disc_record().sector_size_in_bytes(),
                 Fault::InvalidDir { path: stem.clone() },
             )?;
             // If the new entry has fault codes, store those
@@ -236,23 +235,33 @@ impl NewMapDisk {
         map: &NewMap,
         image: &'a [u8],
         addr: DiscPosition,
-        sector_size: usize,
         context: impl Into<Option<Fault>>,
-    ) -> FaultableResult<'a, Directory> {
-        let block = map.get_allocation(0).get_fragment(addr.fragment()).unwrap();
-        let entry_region = block.disk_region();
+    ) -> Result<FaultValue<Directory>, Error<'a>> {
+        let disc_object = map.get_disc_object(addr)?;
+
+        let entry_regions = disc_object
+            .get_disc_regions(addr.sector_idx() as _, Directory::LENGTH)
+            .ok_or(IoError::OutOfBounds {
+                object: addr,
+                length: Directory::LENGTH,
+            })?;
+
+        let Range { start, end } = *entry_regions.first().unwrap();
+
+        // TODO: Still not dealing with discontinuous directory structures
+        assert!(end - start >= Directory::LENGTH);
 
         // Slightly convoluted but it means that parser errors have the right offset,
         // w.r.t the entire image
         let mut cursor = make_input(image);
-        let offset = addr.sector_idx() as usize * sector_size;
-        cursor.next_slice(entry_region.start + offset);
+        cursor.next_slice(start);
 
-        if let Some(c) = context.into() {
+        let result = if let Some(c) = context.into() {
             Directory::parse.context(c).parse_next(&mut cursor)
         } else {
             Directory::parse.parse_next(&mut cursor)
-        }
+        };
+        result.map_err(Into::into)
     }
     /// Gets the metadata and contents of a given path
     pub fn get_file(
@@ -269,15 +278,10 @@ impl NewMapDisk {
             return Err(IoError::InvalidTarget(path.clone()).into());
         };
 
-        let region = match self.map.get_file_region(dir_entry) {
-            Some(region) => region,
-            None => {
-                return Err(IoError::MissingFragment(dir_entry.address).into());
-            }
-        };
+        let regions = self.map.get_file_regions(dir_entry)?;
 
-        if let Err(e) = dest.write_all(&self.image[region]) {
-            return Err(IoError::StdError(e).into());
+        for r in regions {
+            dest.write_all(&self.image[r]).map_err(IoError::StdError)?;
         }
 
         Ok(FaultValue::from(dir_entry.clone()))
