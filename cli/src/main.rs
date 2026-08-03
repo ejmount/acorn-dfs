@@ -94,7 +94,15 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut disk = match maybe_disk {
         Ok(disk) => disk,
-        Err(e) => unimplemented!("Parse failed: {e:}"),
+        Err(e) => match e {
+            Error::LookupError(_) => {
+                unimplemented!();
+            }
+            Error::ParseError(err_mode) => {
+                err_mode.map(|e| panic!("{e}"));
+                unimplemented!()
+            }
+        },
     };
 
     //disk.expand_tree().expect("Explode");
