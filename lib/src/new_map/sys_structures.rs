@@ -30,6 +30,13 @@ pub enum FileObject {
     File(DirEntry),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Format {
+    E,
+    F,
+    Automatic,
+}
+
 /// Represents the parsed contents of a ADFS "new map" (format E or F) disk.
 ///
 /// The data between the fields of this structure are slightly redundant - the
@@ -64,10 +71,29 @@ impl Debug for NewMapDisk {
 impl NewMapDisk {
     // Entry point for creating Format-E disks. The resulting structure does not
     // populate the file tree.
-    pub fn parse<'a>(bytes: &'a [u8]) -> Result<Self, Error<'a>> {
+    pub fn parse<'a>(bytes: &'a [u8], format: Format) -> Result<Self, Error<'a>> {
         let image = bytes.to_vec();
         let mut input = make_input(bytes);
-        let FaultValue(map, mut faults) = NewMap::parse_format_e(&mut input)?;
+
+        let FaultValue(map, mut faults) = match format {
+            Format::E => NewMap::parse_format_e(&mut input)?,
+            Format::F => NewMap::parse_format_f(&mut input)?,
+            Format::Automatic => {
+                let as_e = NewMap::parse_format_e(&mut input);
+                let as_f;
+                if let Ok(e) = as_e {
+                    e
+                } else {
+                    input.reset_to_start();
+                    as_f = NewMap::parse_format_f(&mut input);
+                    if let Ok(f) = as_f {
+                        f
+                    } else {
+                        panic!("Failed to parse\nAs format E: {as_e:?}\nAs format F: {as_f:?}")
+                    }
+                }
+            }
+        };
 
         // Retrieving the root directory object is special, so we do that upfront so
         // that other FS operations can assume the root is cached and walk down from
