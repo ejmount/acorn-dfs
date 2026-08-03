@@ -6,11 +6,9 @@ use serde::Serialize;
 use super::super::Fault;
 use super::super::filesystem::DirEntry;
 use super::super::util::InputStream;
-use super::allocation_map::AllocationMap;
 use super::disc_object::DiscObject;
 use super::disc_record::DiscRecord;
 use super::map_block::MapBlock;
-use crate::new_map::disc_structures::disc_record::DrInclusion;
 use crate::new_map::util::{DiscPosition, FaultableResult};
 use crate::new_map::{FaultValue, IoError};
 

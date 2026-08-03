@@ -6,6 +6,7 @@ use winnow::token::take;
 
 use super::super::util::{DiscPosition, FixedLenString, InputStream, ParseResult};
 use super::super::{Fault, STRICT_MODE};
+use super::disc_header::Header;
 
 /// Various metadata describing the overall disk geometry and "global"
 /// filesystem metadata. Some values are particularly important as they are
@@ -42,15 +43,12 @@ impl DiscRecord {
     pub(crate) fn sector_size_in_bytes(&self) -> usize {
         2usize.pow(self.log2_sec_size as _)
     }
-    pub(crate) fn zone_size_in_bytes(&self) -> usize {
-        (self.size / self.num_zones as u32) as _
-    }
-    pub(crate) fn ids_per_zone(&self) -> usize {
-        ((1 << (self.log2_sec_size as usize + 3)) - self.zone_spare as usize)
-            / (self.idlen as usize + 1)
-    }
+
     pub(crate) fn bytes_per_map_bit(&self) -> usize {
         2usize.pow(self.log2_bytes_per_mapbit as _) as _
+    }
+    pub(crate) fn zone_trailing_bytes(&self) -> usize {
+        (self.zone_spare as usize - 8 * Header::LENGTH) / 8
     }
     pub(crate) fn test_sector_size(s: u8) -> Result<u8, Fault> {
         if !STRICT_MODE || [8, 9, 10, 11].contains(&s) {

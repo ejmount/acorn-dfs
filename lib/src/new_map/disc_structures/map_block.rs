@@ -1,15 +1,16 @@
 use serde::Serialize;
-use winnow::Parser;
-use winnow::error::EmptyError;
-use winnow::stream::{Location, Stream};
-use winnow::token::take;
+use winnow::stream::{Offset, Stream};
 
 use super::allocation_map::AllocationMap;
 use super::disc_header::Header;
 use super::disc_record::{DiscRecord, DrInclusion};
 use super::fragment_block::FragmentBlock;
-use crate::new_map::util::{AllocationParsingParams, FaultableResult, FragmentId,
+use crate::new_map::util::{
+    AllocationParsingParams,
+    FaultableResult,
+    FragmentId,
     InputStream,
+    make_input,
 };
 use crate::new_map::{Fault, FaultValue};
 
@@ -41,24 +42,39 @@ impl MapBlock {
     pub(crate) fn parse_with_disc_record<'a>(
         input: &'_ mut InputStream<'a>,
     ) -> FaultableResult<'a, (Self, DiscRecord)> {
-        let sector_start = input.checkpoint();
+        // Take note of the starting point of the stream so we can use it as a baseline
+        let start = input.checkpoint();
 
+        // Header is always there
         let header = Header::parse(input)?;
+
+        // Read the Disc Record
         let disc_record = DiscRecord::parse(input)?;
-        let params = AllocationParsingParams::new(
-            DrInclusion::WithDiscRecord,
-            header.free_link,
-            &disc_record,
-        );
-        let allocations = AllocationMap::parse(input, &params)?;
 
-        input.reset(&sector_start);
-        let sector_contents = take(params.sector_size())
-            .parse_next(input)
-            .unwrap_or_else(|_: EmptyError| unreachable!(" should've already succedeed"));
+        // Having parsed the header and any disc record, record where we are within the
+        // sector
+        let allocation_offset = input.checkpoint().offset_from(&start);
 
-        let fault = MapBlock::test_checksum(header.zone_check, sector_contents);
-        input.next_slice(disc_record.sector_size_in_bytes());
+        // Reset the input to the start of the sector so we can create a sub-stream of
+        // only the sector.
+        input.reset(&start);
+        let sector_length = disc_record.sector_size_in_bytes();
+        let sector = &input[..sector_length];
+
+        // Do the zone checksum since we have this data. The calculation does not
+        // advance the stream.
+        let fault = MapBlock::test_checksum(header.zone_check, sector);
+
+        // Advance the substream past the header and any DR.
+        let mut sector = make_input(sector);
+        sector.next_slice(allocation_offset);
+
+        // Parse the allocation map.
+        let params = AllocationParsingParams::new(header.free_link, &disc_record);
+        let allocations = AllocationMap::parse(&mut sector, &params)?;
+
+        // Advance the input to the beginning of the next sector.
+        input.next_slice(sector_length);
 
         Ok(FaultValue(
             (

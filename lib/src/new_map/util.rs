@@ -11,11 +11,11 @@ use winnow::binary::bits::Bits;
 use winnow::binary::le_u24;
 use winnow::combinator::trace;
 use winnow::error::{ErrMode, TreeError};
-use winnow::stream::{Location, Stream};
+use winnow::stream::Stream;
 use winnow::token::take;
 use winnow::{BStr, LocatingSlice, ModalResult, Parser};
 
-use super::disc_structures::disc_record::{DiscRecord, DrInclusion};
+use super::disc_structures::disc_record::DiscRecord;
 use super::{Fault, FaultValue};
 
 /// The input used for parsing most structures on disk with winnow combinators.
@@ -78,52 +78,24 @@ pub(crate) fn take_ls_bit<'a>(input: &mut BitInput<'a>) -> ModalResult<bool, Bit
 /// consolidates them.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AllocationParsingParams {
-    pub(crate) mapped_space_in_alloc_units: usize,
     pub(crate) fragment_id_length: usize,
     pub(crate) sector_size: usize,
     pub(crate) free_link: u16,
-    pub(crate) zone_count: usize,
-    pub(crate) total_disk_size: usize,
-    pub(crate) ids_per_zone: usize,
+    pub(crate) trailing_bytes: usize,
 }
 
 impl AllocationParsingParams {
-    pub fn new(
-        zone_includes_map: DrInclusion,
-        free_link: u16,
-        disk: &DiscRecord,
-    ) -> AllocationParsingParams {
-        let orig_zone_size = disk.zone_size_in_bytes();
-        let zone_size_in_bytes = if zone_includes_map == DrInclusion::WithDiscRecord {
-            orig_zone_size - (disk.num_zones as usize * disk.sector_size_in_bytes())
-        } else {
-            orig_zone_size
-        };
-        let mapped_space_in_alloc_units =
-            zone_size_in_bytes / 2usize.pow(disk.log2_bytes_per_mapbit as u32);
-
-        let ids_per_zone = disk.ids_per_zone();
-
+    pub fn new(free_link: u16, disk: &DiscRecord) -> AllocationParsingParams {
         AllocationParsingParams {
-            mapped_space_in_alloc_units,
             fragment_id_length: disk.idlen as _,
             sector_size: disk.sector_size_in_bytes(),
             free_link,
-            total_disk_size: disk.size as _,
-            zone_count: disk.num_zones as _,
-            ids_per_zone,
+            trailing_bytes: disk.zone_trailing_bytes(),
         }
-    }
-    fn zone_size(&self) -> usize {
-        self.total_disk_size / self.zone_count
     }
 
     pub fn sector_size(&self) -> usize {
         self.sector_size
-    }
-
-    pub fn mapped_space_in_alloc_units(&self) -> usize {
-        self.mapped_space_in_alloc_units
     }
     pub fn free_link(&self) -> FragmentId {
         self.free_link

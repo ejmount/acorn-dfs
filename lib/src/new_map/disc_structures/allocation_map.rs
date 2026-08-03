@@ -46,14 +46,27 @@ pub struct AllocationMap {
 }
 
 impl AllocationMap {
+    /// Parses the allocation map from the given remainder of the MapBlock.
+    ///
+    /// In a given MapBlock, which takes up a single sector, the allocation map
+    /// takes up the remainder of the space after the header and, if present, a
+    /// Disc Record. The input to this method must be a stream of only that
+    /// sector, as it uses the length of remaining input to calculate the
+    /// maximum number of fragments to expect.
     pub(crate) fn parse<'a>(
         input: &mut InputStream<'a>,
         params: &AllocationParsingParams,
     ) -> ParseResult<'a, Self> {
+        debug_assert!(
+            input.len() <= params.sector_size(),
+            "Expected only one sector, but input.len() = {} > sector_size = {}",
+            input.len(),
+            params.sector_size()
+        );
         trace(
             "AllocationBytes",
             move |input: &mut InputStream<'a>| -> Result<AllocationMap, ErrMode<ParseError<'a>>> {
-                let mut bits_remaining = params.mapped_space_in_alloc_units();
+                let mut bits_remaining = 8 * (input.len() - params.trailing_bytes);
 
                 // The process here is to read and digest the entire collection of fragment
                 // blocks...
