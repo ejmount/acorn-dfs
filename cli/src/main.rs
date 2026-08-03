@@ -3,9 +3,9 @@ use std::ops::Deref;
 use std::path::PathBuf as OsPath;
 
 use acorn_dfs::new_map::filesystem::DirEntry;
-use acorn_dfs::new_map::sys_structures::{Format, NewMapDisk};
-use acorn_dfs::new_map::{FaultValue, Path};
-use clap::Parser;
+use acorn_dfs::new_map::sys_structures::NewMapDisk;
+use acorn_dfs::new_map::{Error, FaultValue, IoError, Path};
+use clap::{Parser, ValueEnum};
 use mmap_io::MemoryMappedFile;
 
 #[derive(Parser, Debug)]
@@ -13,8 +13,30 @@ use mmap_io::MemoryMappedFile;
 struct Args {
     /// The ADFS disk image to load
     image_path: OsString,
+    #[arg(long, short)]
+    #[arg(value_enum)]
+    #[arg(default_value_t = FormatFlag::Automatic)]
+    format: FormatFlag,
     #[command(subcommand)]
     verb: Verb,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum FormatFlag {
+    E,
+    F,
+    Automatic,
+}
+
+impl From<FormatFlag> for acorn_dfs::new_map::sys_structures::Format {
+    fn from(val: FormatFlag) -> Self {
+        use acorn_dfs::new_map::sys_structures::Format::*;
+        match val {
+            FormatFlag::E => E,
+            FormatFlag::F => F,
+            FormatFlag::Automatic => Automatic,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -68,7 +90,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let contents = src;
 
-    let maybe_disk = NewMapDisk::parse(&contents, Format::E);
+    let maybe_disk = NewMapDisk::parse(&contents, args.format.into());
 
     let mut disk = match maybe_disk {
         Ok(disk) => disk,
