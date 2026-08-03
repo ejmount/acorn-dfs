@@ -5,6 +5,7 @@ use winnow::Parser;
 use winnow::binary::bits::bits;
 use winnow::combinator::trace;
 use winnow::error::{ErrMode, FromExternalError};
+use winnow::stream::Location;
 
 use super::super::Fault;
 use super::super::util::{BitInput, FragmentId, InputStream, ParseError, ParseResult};
@@ -66,6 +67,8 @@ impl AllocationMap {
         trace(
             "AllocationBytes",
             move |input: &mut InputStream<'a>| -> Result<AllocationMap, ErrMode<ParseError<'a>>> {
+                let starting_point = input.current_token_start();
+
                 let mut bits_remaining = 8 * (input.len() - params.trailing_bytes);
 
                 // The process here is to read and digest the entire collection of fragment
@@ -73,7 +76,10 @@ impl AllocationMap {
                 let mut fragments = bits(|input: &mut BitInput<'a>| -> Result<_, ErrMode<_>> {
                     let mut fragments = HashMap::new();
                     while bits_remaining > 0 {
-                        let fragment_block = FragmentBlock::parse(input, params)?;
+                        let mut fragment_block = FragmentBlock::parse(input, params)?;
+                        fragment_block.position = BitPosition::from_bits(
+                            fragment_block.position.bits() - (8 * starting_point),
+                        );
 
                         bits_remaining =
                             bits_remaining.saturating_sub(fragment_block.map_length + 1);
@@ -87,7 +93,7 @@ impl AllocationMap {
                 // ...and only after that, flag the ones that are part of the free list.
                 // (A free link of 0 would mean no free blocks.)
                 if params.free_link() != 0 {
-                    Self::walk_free_chain(&mut fragments, params.free_link())
+                    Self::walk_free_chain(&mut fragments, params.free_link(), starting_point)
                         .map_err(|e| ErrMode::from_external_error(input, e))?;
                 }
 
@@ -108,9 +114,11 @@ impl AllocationMap {
     pub(crate) fn walk_free_chain(
         fragments: &mut HashMap<BitPosition, FragmentBlock>,
         free_link: u16,
+        starting_point: usize,
     ) -> Result<(), Fault> {
-        let free_link_from_zero = 8 + free_link; // Free link value on disc is counting in bits from overall zone offset byte 0x01
+        let free_link_from_zero = 8 + free_link - (8 * starting_point as u16); // Free link value on disc is counting in bits from overall zone offset byte 0x01, so we adjust for that and for the position of the allocation map within the sector.
         let free_link_position = BitPosition::from_bits(free_link_from_zero as usize);
+
         let head_fragment = fragments
             .get_mut(&free_link_position)
             .ok_or(Fault::InvalidFreeLink(free_link))?;

@@ -36,8 +36,8 @@ NewMap {
                 blocks: [
                     (
                         BitPosition {
-                            val: 512,
-                            bytes: 64,
+                            val: 0,
+                            bytes: 0,
                             bits: 0,
                         },
                         FragmentBlock {
@@ -45,16 +45,16 @@ NewMap {
                             free_space: false,
                             map_length: 32,
                             position: BitPosition {
-                                val: 512,
-                                bytes: 64,
+                                val: 0,
+                                bytes: 0,
                                 bits: 0,
                             },
                         },
                     ),
                     (
                         BitPosition {
-                            val: 544,
-                            bytes: 68,
+                            val: 32,
+                            bytes: 4,
                             bits: 0,
                         },
                         FragmentBlock {
@@ -62,16 +62,16 @@ NewMap {
                             free_space: false,
                             map_length: 40,
                             position: BitPosition {
-                                val: 544,
-                                bytes: 68,
+                                val: 32,
+                                bytes: 4,
                                 bits: 0,
                             },
                         },
                     ),
                     (
                         BitPosition {
-                            val: 584,
-                            bytes: 73,
+                            val: 72,
+                            bytes: 9,
                             bits: 0,
                         },
                         FragmentBlock {
@@ -79,16 +79,16 @@ NewMap {
                             free_space: false,
                             map_length: 16,
                             position: BitPosition {
-                                val: 584,
-                                bytes: 73,
+                                val: 72,
+                                bytes: 9,
                                 bits: 0,
                             },
                         },
                     ),
                     (
                         BitPosition {
-                            val: 600,
-                            bytes: 75,
+                            val: 88,
+                            bytes: 11,
                             bits: 0,
                         },
                         FragmentBlock {
@@ -96,8 +96,8 @@ NewMap {
                             free_space: true,
                             map_length: 6312,
                             position: BitPosition {
-                                val: 600,
-                                bytes: 75,
+                                val: 88,
+                                bytes: 11,
                                 bits: 0,
                             },
                         },

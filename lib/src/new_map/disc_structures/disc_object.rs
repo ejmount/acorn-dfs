@@ -2,7 +2,6 @@ use std::range::Range;
 
 use super::disc_record::DiscRecord;
 use super::fragment_block::FragmentBlock;
-use crate::new_map::disc_structures::ALLOCATION_MAP_START_IN_BITS;
 
 #[derive(Debug, Clone)]
 pub(crate) struct DiscObject {
@@ -23,7 +22,7 @@ impl DiscObject {
         let mut regions = vec![];
 
         for block in &fragments {
-            let bit_start = block.position.bits() - ALLOCATION_MAP_START_IN_BITS;
+            let bit_start = block.position.bits();
 
             let bit_end = bit_start + block.map_length;
 
