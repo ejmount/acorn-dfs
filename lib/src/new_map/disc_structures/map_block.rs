@@ -80,17 +80,8 @@ impl MapBlock {
             .parse_next(input)
             .unwrap_or_else(|_: EmptyError| unreachable!(" should've already succedeed"));
 
-        let actual_zone_check = MapBlock::calculate_zone_check(sector_contents);
+        let fault = MapBlock::test_checksum(header.zone_check, sector_contents);
         input.reset(&sector_end);
-
-        let faults = if actual_zone_check != header.zone_check {
-            vec![Fault::ZoneCheckFailure {
-                actual: actual_zone_check,
-                expected: header.zone_check,
-            }]
-        } else {
-            vec![]
-        };
 
         Ok(FaultValue(
             (
@@ -101,11 +92,27 @@ impl MapBlock {
                 },
                 disc_record,
             ),
-            faults,
+            fault.into_iter().collect(),
         ))
     }
     pub(crate) fn get_fragments(&self, id: FragmentId) -> Vec<FragmentBlock> {
         self.allocations.get_fragments(id)
+    }
+
+    /// Run the zone check and create a fault code if needed
+    fn test_checksum(expected_zone_check: u8, sector: &[u8]) -> Option<Fault> {
+        // Do the zone checksum since we have this data. The calculation does not
+        // advance the stream.
+        let actual_zone_check = MapBlock::calculate_zone_check(sector);
+        // Set up fault code if checksum failed
+        if actual_zone_check != expected_zone_check {
+            Some(Fault::ZoneCheckFailure {
+                actual: actual_zone_check,
+                expected: expected_zone_check,
+            })
+        } else {
+            None
+        }
     }
 
     /// Zone checksum
