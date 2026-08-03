@@ -123,11 +123,11 @@ fn read_file(path: &OsStr) -> Result<DataSource, std::io::Error> {
     Ok(src)
 }
 
-fn write_file_plus_metadata(
-    disk: &NewMapDisk,
+fn write_file_plus_metadata<'a>(
+    disk: &'a NewMapDisk,
     destination: OsPath,
     path: &Path,
-) -> Result<(), std::io::Error> {
+) -> Result<(), Error<'a>> {
     let mut folder = destination.clone();
 
     // Assume that destination is pointing at a filename, remove the leaf name to
@@ -136,14 +136,14 @@ fn write_file_plus_metadata(
 
     std::fs::create_dir_all(&folder).unwrap();
 
-    let mut f = std::fs::File::create(&destination).unwrap_or_else(|_| todo!());
+    let mut f = std::fs::File::create(&destination).map_err(IoError::StdError)?;
 
-    let FaultValue(entry, _) = disk.get_file(path, &mut f).unwrap_or_else(|_| todo!());
+    let FaultValue(entry, _) = disk.get_file(path, &mut f)?;
 
     let mut inf_path = destination.clone();
     inf_path.set_extension("inf");
     let inf_data = inf_data(&entry);
-    std::fs::write(inf_path, inf_data)
+    std::fs::write(inf_path, inf_data).map_err(|e| IoError::StdError(e).into())
 }
 
 fn inf_data(dir: &DirEntry) -> String {
