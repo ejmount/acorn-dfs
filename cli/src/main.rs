@@ -91,18 +91,6 @@ fn main() -> Result<(), std::io::Error> {
                 Ok(_) => {}
                 Err(e) => panic!("Could not extract file at {path}: {e}"),
             }
-
-            // match disk.get_file(&path, &mut contents) {
-            //     Ok(FaultValue(Ok(entry), _)) => {
-            //         write_file_plus_metadata(destination, &entry,
-            // contents).unwrap()     }
-            //     Ok(FaultValue(Err(e), _)) => {
-            //         panic!("Could not find file at {path} on the disk: {e}")
-            //     }
-            //     Err(e) => {
-            //         panic!("Parse error trying to extract {path} on the disk:
-            // {e}")     }
-            // }
         }
         Verb::ExtractAll {
             destination_folder: destination,
