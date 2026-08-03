@@ -8,12 +8,8 @@ use super::allocation_map::AllocationMap;
 use super::disc_header::Header;
 use super::disc_record::{DiscRecord, DrInclusion};
 use super::fragment_block::FragmentBlock;
-use crate::new_map::util::{
-    AllocationParsingParams,
-    FaultableResult,
-    FragmentId,
+use crate::new_map::util::{AllocationParsingParams, FaultableResult, FragmentId,
     InputStream,
-    take_rest_of_sector,
 };
 use crate::new_map::{Fault, FaultValue};
 
@@ -31,9 +27,6 @@ pub(crate) struct MapBlock {
     pub(crate) header: Header,
     #[serde(skip)]
     pub(crate) allocations: AllocationMap,
-    #[serde(skip)]
-    /// the remainder of the sector
-    pub(crate) _unused: Vec<u8>,
 }
 
 impl MapBlock {
@@ -42,23 +35,9 @@ impl MapBlock {
         includes_map: DrInclusion,
         disc: &DiscRecord,
     ) -> FaultableResult<'a, Self> {
-        let header = Header::parse(input)?;
-        let params = AllocationParsingParams::new(includes_map, header.free_link, disc);
-
-        let allocations = AllocationMap::parse(input, &params)?;
-        let remainder = disc.sector_size_in_bytes()
-            - (input.current_token_start() % disc.sector_size_in_bytes());
-        let _unused = Vec::from(take(remainder).parse_next(input)?);
-
-        // TODO: Add zone_check validation
-
-        Ok(MapBlock {
-            header,
-            allocations,
-            _unused,
-        }
-        .into())
+        unimplemented!()
     }
+
     pub(crate) fn parse_with_disc_record<'a>(
         input: &'_ mut InputStream<'a>,
     ) -> FaultableResult<'a, (Self, DiscRecord)> {
@@ -72,23 +51,20 @@ impl MapBlock {
             &disc_record,
         );
         let allocations = AllocationMap::parse(input, &params)?;
-        let _unused = take_rest_of_sector(input, disc_record.sector_size_in_bytes())?.to_vec();
 
-        let sector_end = input.checkpoint();
         input.reset(&sector_start);
         let sector_contents = take(params.sector_size())
             .parse_next(input)
             .unwrap_or_else(|_: EmptyError| unreachable!(" should've already succedeed"));
 
         let fault = MapBlock::test_checksum(header.zone_check, sector_contents);
-        input.reset(&sector_end);
+        input.next_slice(disc_record.sector_size_in_bytes());
 
         Ok(FaultValue(
             (
                 MapBlock {
                     header,
                     allocations,
-                    _unused,
                 },
                 disc_record,
             ),
