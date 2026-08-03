@@ -3,7 +3,7 @@ use winnow::stream::{Offset, Stream};
 
 use super::allocation_map::AllocationMap;
 use super::disc_header::Header;
-use super::disc_record::{DiscRecord, DrInclusion};
+use super::disc_record::DiscRecord;
 use super::fragment_block::FragmentBlock;
 use crate::new_map::util::{
     AllocationParsingParams,
@@ -33,12 +33,38 @@ pub(crate) struct MapBlock {
 impl MapBlock {
     pub(crate) fn parse<'a>(
         input: &mut InputStream<'a>,
-        includes_map: DrInclusion,
-        disc: &DiscRecord,
+        disc_record: &DiscRecord,
     ) -> FaultableResult<'a, Self> {
-        unimplemented!()
-    }
+        // Already know the size of the sector ahead of time, so we can immediately
+        // create a stream of only this sector.
+        let sector_length = disc_record.sector_size_in_bytes();
+        let sector = &input[..sector_length];
 
+        // Keep this separate from the raw data so we can go back to the full sector
+        // easily
+        let mut sector_stream = make_input(sector);
+
+        // Header is always there
+        let header = Header::parse(&mut sector_stream)?;
+
+        // Do the zone checksum since we have this data. The calculation does not
+        // advance the stream, so we can do it on the raw array
+        let faults = MapBlock::test_checksum(header.zone_check, sector);
+
+        let params = AllocationParsingParams::new(header.free_link, disc_record);
+        let allocations = AllocationMap::parse(&mut sector_stream, &params)?;
+
+        // Advance the input to the beginning of the next sector.
+        input.next_slice(sector_length);
+
+        Ok(FaultValue(
+            MapBlock {
+                header,
+                allocations,
+            },
+            faults.into_iter().collect(),
+        ))
+    }
     pub(crate) fn parse_with_disc_record<'a>(
         input: &'_ mut InputStream<'a>,
     ) -> FaultableResult<'a, (Self, DiscRecord)> {
@@ -87,6 +113,7 @@ impl MapBlock {
             fault.into_iter().collect(),
         ))
     }
+
     pub(crate) fn get_fragments(&self, id: FragmentId) -> Vec<FragmentBlock> {
         self.allocations.get_fragments(id)
     }

@@ -2,6 +2,9 @@ use std::ops::BitXor;
 use std::range::Range;
 
 use serde::Serialize;
+use winnow::Parser;
+use winnow::stream::Stream;
+use winnow::token::take;
 
 use super::super::Fault;
 use super::super::filesystem::DirEntry;
@@ -9,13 +12,18 @@ use super::super::util::InputStream;
 use super::disc_object::DiscObject;
 use super::disc_record::DiscRecord;
 use super::map_block::MapBlock;
-use crate::new_map::util::{DiscPosition, FaultableResult};
+use crate::new_map::util::{DiscPosition, FaultableResult, ParseResult};
 use crate::new_map::{FaultValue, IoError};
 
 /// The xor of the cross check header values should be this value
 ///
 /// https://www.riscos.com/support/developers/prm/filecore.html#98861
 const EXPECTED_CROSS_CHECK: u8 = 0xFF;
+
+/// Format F disks have a "boot block," a copy of the disc record at a fixed
+/// offset. See here for the details:
+/// https://www.riscos.com/support/developers/prm/filecore.html#44373
+const BOOT_BLOCK_OFFSET: usize = 0xC00 + 0x1C0;
 
 /// The "new"-style file allocation map structure, used by format E and F
 /// disks.
@@ -60,6 +68,42 @@ impl NewMap {
 
         Ok(FaultValue(new_map, faults))
     }
+
+    pub fn parse_format_f<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
+        let boot_block = Self::get_boot_block(*input)?;
+
+        let zone_count = boot_block.num_zones;
+
+        let offset = boot_block.get_zone_offset(zone_count as usize / 2);
+
+        let _ = take(offset).parse_next(input)?;
+
+        let FaultValue((initial_block, disc_record), mut faults) =
+            MapBlock::parse_with_disc_record(input)?;
+
+        let mut blocks = vec![initial_block];
+
+        for _ in 1..zone_count {
+            let FaultValue(block, f) = MapBlock::parse(input, &disc_record)?;
+            faults.extend(f);
+            blocks.push(block);
+        }
+
+        Ok(FaultValue(
+            NewMap {
+                blocks,
+                disc_record,
+            },
+            faults,
+        ))
+    }
+
+    fn get_boot_block(mut input: InputStream<'_>) -> ParseResult<'_, DiscRecord> {
+        let _ = input.next_slice(BOOT_BLOCK_OFFSET);
+
+        DiscRecord::parse(&mut input)
+    }
+
     pub(crate) fn get_disc_record(&self) -> &DiscRecord {
         &self.disc_record
     }
