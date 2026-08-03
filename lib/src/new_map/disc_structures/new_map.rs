@@ -45,19 +45,11 @@ pub struct NewMap {
 
 impl NewMap {
     /// Construct a format-E NewMap out of the given byte stream
-    pub fn parse<'a>(input: &mut InputStream<'a>, num_zones: usize) -> FaultableResult<'a, Self> {
-        assert!(num_zones > 0);
+    pub fn parse_format_e<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
         let FaultValue((leading_block, disc_record), mut faults) =
             MapBlock::parse_with_disc_record(input)?;
 
-        let mut blocks = vec![leading_block];
-
-        for _ in 0..(num_zones - 1) {
-            let FaultValue(block, sub_faults) =
-                MapBlock::parse(input, DrInclusion::WithoutDiscRecord, &disc_record)?;
-            faults.extend(sub_faults);
-            blocks.push(block);
-        }
+        let blocks = vec![leading_block];
 
         let new_map = NewMap {
             disc_record,

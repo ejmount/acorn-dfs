@@ -67,7 +67,7 @@ impl NewMapDisk {
     pub fn parse<'a>(bytes: &'a [u8]) -> Result<Self, Error<'a>> {
         let image = bytes.to_vec();
         let mut input = make_input(bytes);
-        let FaultValue(map, mut faults) = NewMap::parse(&mut input, 1)?;
+        let FaultValue(map, mut faults) = NewMap::parse_format_e(&mut input)?;
 
         // Retrieving the root directory object is special, so we do that upfront so
         // that other FS operations can assume the root is cached and walk down from
