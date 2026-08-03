@@ -11,7 +11,7 @@ use mmap_io::MemoryMappedFile;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// The disk image to load
+    /// The ADFS disk image to load
     image_path: OsString,
     #[command(subcommand)]
     verb: Verb,
@@ -24,9 +24,12 @@ pub enum Verb {
     /// Extract a single file from the given path to a given host file
     #[command(id = "extract")]
     ExtractFile {
+        /// The ADFS path of the file to extract
         #[arg(short, long)]
         #[arg(value_parser = Path::try_from_str)]
         path: Path,
+        /// The host path to save it to. An accompanying metadata file will be
+        /// saved with a .inf extension.
         #[arg(short, long)]
         destination: OsPath,
     },
