@@ -1,0 +1,227 @@
+---
+source: lib/tests/image_assertions.rs
+expression: "&disk.map"
+---
+NewMap {
+    disc_record: DiscRecord {
+        log2_sec_size: 10,
+        secs_per_track: 10,
+        heads: 2,
+        density: 4,
+        idlen: 15,
+        log2_bytes_per_mapbit: 6,
+        skew: 1,
+        boot_options: 0,
+        low_sector: 0,
+        num_zones: 4,
+        zone_spare: 1600,
+        root_dir: DiscPosition {
+            val: 521,
+            fragment: 2,
+            sector no: 8,
+        },
+        size: 1638400,
+        disc_id: 37187,
+        disc_name: FixedLenString("00_07_Sun "),
+        disc_type: 0,
+    },
+    blocks: [
+        MapBlock {
+            header: Header {
+                zone_check: 144,
+                free_link: 568,
+                cross_check: 1,
+            },
+            allocations: AllocationMap {
+                blocks: [
+                    (
+                        BitPosition {
+                            val: 0,
+                            bytes: 0,
+                            bits: 0,
+                        },
+                        FragmentBlock {
+                            id: 2,
+                            free_space: false,
+                            map_length: 64,
+                            position: BitPosition {
+                                val: 0,
+                                bytes: 0,
+                                bits: 0,
+                            },
+                        },
+                    ),
+                    (
+                        BitPosition {
+                            val: 64,
+                            bytes: 8,
+                            bits: 0,
+                        },
+                        FragmentBlock {
+                            id: 0,
+                            free_space: true,
+                            map_length: 6048,
+                            position: BitPosition {
+                                val: 64,
+                                bytes: 8,
+                                bits: 0,
+                            },
+                        },
+                    ),
+                ],
+            },
+        },
+        MapBlock {
+            header: Header {
+                zone_check: 24,
+                free_link: 24,
+                cross_check: 0,
+            },
+            allocations: AllocationMap {
+                blocks: [
+                    (
+                        BitPosition {
+                            val: 0,
+                            bytes: 0,
+                            bits: 0,
+                        },
+                        FragmentBlock {
+                            id: 0,
+                            free_space: true,
+                            map_length: 6592,
+                            position: BitPosition {
+                                val: 0,
+                                bytes: 0,
+                                bits: 0,
+                            },
+                        },
+                    ),
+                ],
+            },
+        },
+        MapBlock {
+            header: Header {
+                zone_check: 158,
+                free_link: 280,
+                cross_check: 1,
+            },
+            allocations: AllocationMap {
+                blocks: [
+                    (
+                        BitPosition {
+                            val: 0,
+                            bytes: 0,
+                            bits: 0,
+                        },
+                        FragmentBlock {
+                            id: 2,
+                            free_space: false,
+                            map_length: 160,
+                            position: BitPosition {
+                                val: 0,
+                                bytes: 0,
+                                bits: 0,
+                            },
+                        },
+                    ),
+                    (
+                        BitPosition {
+                            val: 160,
+                            bytes: 20,
+                            bits: 0,
+                        },
+                        FragmentBlock {
+                            id: 824,
+                            free_space: false,
+                            map_length: 16,
+                            position: BitPosition {
+                                val: 160,
+                                bytes: 20,
+                                bits: 0,
+                            },
+                        },
+                    ),
+                    (
+                        BitPosition {
+                            val: 176,
+                            bytes: 22,
+                            bits: 0,
+                        },
+                        FragmentBlock {
+                            id: 825,
+                            free_space: false,
+                            map_length: 80,
+                            position: BitPosition {
+                                val: 176,
+                                bytes: 22,
+                                bits: 0,
+                            },
+                        },
+                    ),
+                    (
+                        BitPosition {
+                            val: 256,
+                            bytes: 32,
+                            bits: 0,
+                        },
+                        FragmentBlock {
+                            id: 0,
+                            free_space: true,
+                            map_length: 6336,
+                            position: BitPosition {
+                                val: 256,
+                                bytes: 32,
+                                bits: 0,
+                            },
+                        },
+                    ),
+                ],
+            },
+        },
+        MapBlock {
+            header: Header {
+                zone_check: 101,
+                free_link: 24,
+                cross_check: 255,
+            },
+            allocations: AllocationMap {
+                blocks: [
+                    (
+                        BitPosition {
+                            val: 0,
+                            bytes: 0,
+                            bits: 0,
+                        },
+                        FragmentBlock {
+                            id: 0,
+                            free_space: true,
+                            map_length: 6304,
+                            position: BitPosition {
+                                val: 0,
+                                bytes: 0,
+                                bits: 0,
+                            },
+                        },
+                    ),
+                    (
+                        BitPosition {
+                            val: 6304,
+                            bytes: 788,
+                            bits: 0,
+                        },
+                        FragmentBlock {
+                            id: 1,
+                            free_space: false,
+                            map_length: 288,
+                            position: BitPosition {
+                                val: 6304,
+                                bytes: 788,
+                                bits: 0,
+                            },
+                        },
+                    ),
+                ],
+            },
+        },
+    ],
+}

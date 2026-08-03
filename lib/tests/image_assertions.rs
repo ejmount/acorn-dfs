@@ -7,17 +7,20 @@ use acorn_dfs::new_map::sys_structures::{Format, NewMapDisk};
 use insta::{assert_debug_snapshot, with_settings};
 
 #[test]
-fn format_e_images() {
-    const FILES: &[&str] = &["test_images/adfs800E.adf"];
-    for f in FILES {
-        let p = Path::new(*f);
-        assert_format_e(p);
+fn assert_image_snapshots() {
+    const FILES: &[(&str, Format)] = &[
+        ("test_images/adfs800E.adf", Format::E),
+        ("test_images/adfs1600F.adf", Format::F),
+    ];
+    for (file, format) in FILES {
+        let p = Path::new(*file);
+        assert_file(p, *format);
     }
 }
 
-fn load_format_e(path: &Path) -> NewMapDisk {
+fn load_file(path: &Path, format: Format) -> NewMapDisk {
     let contents = std::fs::read(path).unwrap();
-    NewMapDisk::parse(&contents, Format::E).unwrap()
+    NewMapDisk::parse(&contents, format).unwrap()
 }
 
 fn calculate_checksum(contents: &[u8]) -> u32 {
@@ -26,8 +29,8 @@ fn calculate_checksum(contents: &[u8]) -> u32 {
     crc.checksum(contents)
 }
 
-fn assert_format_e(path: &Path) {
-    let disk = load_format_e(path);
+fn assert_file(path: &Path, format: Format) {
+    let disk = load_file(path, format);
 
     let mut entries = BTreeMap::new();
     let mut checksums = BTreeMap::new();
