@@ -16,7 +16,7 @@ use winnow::token::take;
 use winnow::{BStr, LocatingSlice, ModalResult, Parser};
 
 use super::disc_structures::disc_record::DiscRecord;
-use super::{Fault, FaultValue};
+use super::error::{Fault, FaultValue};
 
 /// The input used for parsing most structures on disk with winnow combinators.
 ///

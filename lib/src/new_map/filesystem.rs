@@ -8,6 +8,7 @@ use winnow::combinator::{repeat, seq, trace};
 use winnow::stream::Location;
 use winnow::token::take;
 
+use super::error::{Fault, FaultValue, STRICT_MODE};
 use super::sys_structures::Path;
 use super::util::{
     BitPosition,
@@ -17,7 +18,6 @@ use super::util::{
     InputStream,
     ParseResult,
 };
-use super::{Fault, FaultValue, STRICT_MODE};
 
 pub(crate) const MAX_SEGMENT_LENGTH: usize = 10;
 pub(crate) const MAX_TITLE_LENGTH: usize = 19;

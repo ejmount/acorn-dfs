@@ -5,8 +5,8 @@ use winnow::combinator::{seq, trace};
 use winnow::token::take;
 
 use super::super::util::{DiscPosition, FixedLenString, InputStream, ParseResult};
-use super::super::{Fault, STRICT_MODE};
 use super::disc_header::Header;
+use crate::new_map::error::{Fault, STRICT_MODE};
 
 /// Various metadata describing the overall disk geometry and "global"
 /// filesystem metadata. Some values are particularly important as they are

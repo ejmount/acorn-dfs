@@ -6,14 +6,13 @@ use winnow::Parser;
 use winnow::stream::Stream;
 use winnow::token::take;
 
-use super::super::Fault;
 use super::super::filesystem::DirEntry;
 use super::super::util::InputStream;
 use super::disc_object::DiscObject;
 use super::disc_record::DiscRecord;
 use super::map_block::MapBlock;
+use crate::new_map::error::{Fault, FaultValue, IoError};
 use crate::new_map::util::{DiscPosition, FaultableResult, ParseResult};
-use crate::new_map::{FaultValue, IoError};
 
 /// The xor of the cross check header values should be this value
 ///

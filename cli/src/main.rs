@@ -2,9 +2,9 @@ use std::ffi::{OsStr, OsString};
 use std::ops::Deref;
 use std::path::PathBuf as OsPath;
 
+use acorn_dfs::new_map::error::{Error, FaultValue, IoError};
 use acorn_dfs::new_map::filesystem::DirEntry;
-use acorn_dfs::new_map::sys_structures::NewMapDisk;
-use acorn_dfs::new_map::{Error, FaultValue, IoError, Path};
+use acorn_dfs::new_map::sys_structures::{NewMapDisk, Path};
 use clap::{Parser, ValueEnum};
 use mmap_io::MemoryMappedFile;
 

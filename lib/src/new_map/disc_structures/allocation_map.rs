@@ -7,9 +7,9 @@ use winnow::combinator::trace;
 use winnow::error::{ErrMode, FromExternalError};
 use winnow::stream::Location;
 
-use super::super::Fault;
 use super::super::util::{BitInput, FragmentId, InputStream, ParseError, ParseResult};
 use super::fragment_block::FragmentBlock;
+use crate::new_map::error::Fault;
 use crate::new_map::util::{AllocationParsingParams, BitPosition};
 
 /// The Allocation Map represents how the space across the disk is assigned

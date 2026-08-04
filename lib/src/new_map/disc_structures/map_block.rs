@@ -5,6 +5,7 @@ use super::allocation_map::AllocationMap;
 use super::disc_header::Header;
 use super::disc_record::DiscRecord;
 use super::fragment_block::FragmentBlock;
+use crate::new_map::error::{Fault, FaultValue};
 use crate::new_map::util::{
     AllocationParsingParams,
     FaultableResult,
@@ -12,7 +13,6 @@ use crate::new_map::util::{
     InputStream,
     make_input,
 };
-use crate::new_map::{Fault, FaultValue};
 
 /// The MapBlock ordinarily contains
 /// 1. various validation checksums in the [`Header`]

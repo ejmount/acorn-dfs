@@ -13,9 +13,9 @@ use winnow::combinator::{opt, preceded, separated, terminated};
 use winnow::stream::Stream;
 
 use super::disc_structures::new_map::NewMap;
+use super::error::{Error, Fault, FaultValue, IoError};
 use super::filesystem::{Attributes, DirEntry, Directory};
 use super::util::{DiscPosition, FixedLenString, make_input};
-use super::{Error, Fault, FaultValue, IoError};
 
 type FileTree = BTreeMap<Path, FileObject>;
 
