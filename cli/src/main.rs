@@ -86,7 +86,13 @@ impl Deref for DataSource {
 fn main() -> Result<(), std::io::Error> {
     let args = Args::parse();
 
-    let src = read_file(&args.image_path)?;
+    let src = match read_file(&args.image_path) {
+        Ok(src) => src,
+        Err(e) => {
+            eprintln!("Could not open file at '{}'", args.image_path.display(),);
+            return Err(e);
+        }
+    };
 
     let contents = src;
 
