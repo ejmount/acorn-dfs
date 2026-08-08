@@ -2,9 +2,9 @@ use std::ffi::{OsStr, OsString};
 use std::ops::Deref;
 use std::path::PathBuf as OsPath;
 
-use acorn_dfs::new_map::error::{Error, FaultValue, IoError};
-use acorn_dfs::new_map::filesystem::DirEntry;
-use acorn_dfs::new_map::sys_structures::{NewMapDisk, Path};
+use acorn_dfs::error::{Error, FaultValue, IoError};
+use acorn_dfs::filesystem::DirEntry;
+use acorn_dfs::sys_structures::{NewMapDisk, Path};
 use clap::{Parser, ValueEnum};
 use mmap_io::MemoryMappedFile;
 
@@ -28,9 +28,9 @@ enum FormatFlag {
     Automatic,
 }
 
-impl From<FormatFlag> for acorn_dfs::new_map::sys_structures::Format {
+impl From<FormatFlag> for acorn_dfs::sys_structures::Format {
     fn from(val: FormatFlag) -> Self {
-        use acorn_dfs::new_map::sys_structures::Format::*;
+        use acorn_dfs::sys_structures::Format::*;
         match val {
             FormatFlag::E => E,
             FormatFlag::F => F,

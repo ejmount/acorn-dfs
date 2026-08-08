@@ -153,10 +153,10 @@ fn sort_blocks(fragments: &mut [(usize, FragmentBlock)], ids_per_zone: usize, nu
 
 #[cfg(test)]
 mod test {
-    use crate::new_map::disc_structures::disc_object::{DiscObject, sort_blocks};
-    use crate::new_map::disc_structures::disc_record::DiscRecord;
-    use crate::new_map::disc_structures::fragment_block::FragmentBlock;
-    use crate::new_map::util::{BitPosition, DiscPosition, FixedLenString, FragmentId};
+    use crate::new_map::disc_object::{DiscObject, sort_blocks};
+    use crate::new_map::disc_record::DiscRecord;
+    use crate::new_map::fragment_block::FragmentBlock;
+    use crate::util::{BitPosition, DiscPosition, FixedLenString};
 
     #[test]
     fn ordering_test() {

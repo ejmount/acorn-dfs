@@ -12,10 +12,10 @@ use winnow::Parser;
 use winnow::combinator::{opt, preceded, separated, terminated};
 use winnow::stream::Stream;
 
-use super::disc_structures::new_map::NewMap;
 use super::error::{Error, Fault, FaultValue, IoError};
 use super::filesystem::{Attributes, DirEntry, Directory};
 use super::util::{DiscPosition, FixedLenString, make_input};
+use crate::new_map::new_map::NewMap;
 
 type FileTree = BTreeMap<Path, FileObject>;
 
@@ -485,7 +485,7 @@ impl<'a> Extend<&'a Path> for Path {
 #[cfg(test)]
 mod test {
     use super::Path;
-    use crate::new_map::util::FixedLenString;
+    use crate::util::FixedLenString;
 
     #[test]
     fn parse_paths() {

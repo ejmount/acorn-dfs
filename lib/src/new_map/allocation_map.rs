@@ -9,8 +9,8 @@ use winnow::stream::Location;
 
 use super::super::util::{BitInput, FragmentId, InputStream, ParseError, ParseResult};
 use super::fragment_block::FragmentBlock;
-use crate::new_map::error::Fault;
-use crate::new_map::util::{AllocationParsingParams, BitPosition};
+use crate::error::Fault;
+use crate::util::{AllocationParsingParams, BitPosition};
 
 /// The Allocation Map represents how the space across the disk is assigned
 /// to "fragments," and is encoded as a *bit* stream with

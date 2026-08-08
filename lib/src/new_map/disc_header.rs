@@ -4,7 +4,7 @@ use winnow::binary::{le_u8, le_u16};
 use winnow::combinator::{seq, trace};
 
 use super::super::util::InputStream;
-use crate::new_map::util::ParseResult;
+use crate::util::ParseResult;
 
 /// A prefix of a [`MapBlock`], containing various checks and the pointer to
 /// beginning of the free list

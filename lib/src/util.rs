@@ -15,8 +15,8 @@ use winnow::stream::Stream;
 use winnow::token::take;
 use winnow::{BStr, LocatingSlice, ModalResult, Parser};
 
-use super::disc_structures::disc_record::DiscRecord;
 use super::error::{Fault, FaultValue};
+use super::new_map::disc_record::DiscRecord;
 
 /// The input used for parsing most structures on disk with winnow combinators.
 ///
@@ -200,7 +200,6 @@ impl<const LEN: usize> FixedLenString<LEN> {
 
     /// For easily constructing an FLS for testing. Similar to
     /// `parse_from_byte_str` but ignores control character considerations.
-    #[cfg(test)]
     pub fn from_bytes_dynamic(input: &[u8]) -> FixedLenString<LEN> {
         let len = input.len().min(LEN);
         let mut output = [0; LEN];

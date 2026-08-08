@@ -2,7 +2,7 @@ use winnow::combinator::trace;
 use winnow::stream::Location;
 use winnow::{ModalResult, Parser};
 
-use crate::new_map::util::{
+use crate::util::{
     AllocationParsingParams,
     BitErr,
     BitInput,
