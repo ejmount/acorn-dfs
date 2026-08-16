@@ -15,18 +15,28 @@ use crate::util::{
 /// on the disk.
 #[derive(Debug, Clone, Copy)]
 pub struct FragmentBlock {
+    /// The id number of this Fragment. Multiple Fragments can exist with the
+    /// same id number, either across a single zone or multiple (in format F)
+    /// and a given [`super::disc_object::DiscObject`] corresponds to the
+    /// concatenation of all of them.
+    ///
     /// The `id` is the only data the disc explicitly records, the other
-    /// fields are stored to simplify further logic and/or debugging
+    /// fields are stored to simplify further logic and/or debugging.
     pub(crate) id: FragmentId,
     /// Whether this block represents a region of free space
     pub(crate) free_space: bool,
-    /// The length, in bits this block takes up inside the `AllocationMap`
+    /// The length, in bits, this block takes up inside the `AllocationMap`,
+    /// including the terminating `1`
     pub(crate) map_length: usize,
-    /// the position within the allocation map this block starts at.
+    /// the position within the allocation map this block starts at. This
+    /// corresponds to the starting point of the zone allocation this fragment
+    /// represents.
     pub(crate) position: BitPosition,
 }
 
 impl FragmentBlock {
+    /// Parses a single FragmentBlock. Fails only if the stream is exhausted
+    /// early, which shouldn't happen with a well-formed image.
     pub(crate) fn parse<'a>(
         input: &mut BitInput<'a>,
         params: &AllocationParsingParams,

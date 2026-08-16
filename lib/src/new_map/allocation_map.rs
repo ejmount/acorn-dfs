@@ -54,6 +54,14 @@ impl AllocationMap {
     /// Disc Record. The input to this method must be a stream of only that
     /// sector, as it uses the length of remaining input to calculate the
     /// maximum number of fragments to expect.
+    ///
+    /// ## Errors
+    ///
+    /// This step constructs the free chain (by calling
+    /// [`Self::walk_free_chain`]), which will fail if the free chain is
+    /// untraversable for any reason. The original construction of the
+    /// Allocation Map (see [`AllocationMap::parse`]) can fail, but only because
+    /// the stream is exhausted, which should not happen for a valid image.
     pub(crate) fn parse<'a>(
         input: &mut InputStream<'a>,
         params: &AllocationParsingParams,

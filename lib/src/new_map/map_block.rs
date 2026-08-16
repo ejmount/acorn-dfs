@@ -42,10 +42,12 @@ impl MapBlock {
         let header = Header::parse(&mut sector_stream)?;
 
         // Do the zone checksum since we have this data. The calculation does not
-        // advance the stream, so we can do it on the raw array
+        // advance the stream.
         let faults = MapBlock::test_checksum(header.zone_check, sector);
 
         let params = AllocationParsingParams::new(header.free_link, disc_record);
+        // Parsing the AM expects *only* the sector as input, the end point of the
+        // stream is load-bearing.
         let allocations = AllocationMap::parse(&mut sector_stream, &params)?;
 
         // Advance the input to the beginning of the next sector.
@@ -59,6 +61,21 @@ impl MapBlock {
             faults.into_iter().collect(),
         ))
     }
+
+    /// Parses the MapBlock and the contained DiscRecord.
+    ///
+    /// This is expected to be used to parse the initial map block (the only one
+    /// in format E) which is then followed with calling [`Self::parse`] once
+    /// per remaining zone. This choice must be made by the caller as there
+    /// appears to be no robust way to determine it from the stream alone.
+    ///
+    /// ## Errors
+    ///
+    /// Can fail when:
+    /// - the Disc Record is invalid (see [`DiscRecord::parse`]), currently only
+    ///   because of a suspect sector size
+    /// - the AllocationMap fails to build, which is most likely to be because
+    ///   the [free list is not traversable](AllocationMap::walk_free_chain).
     pub(crate) fn parse_with_disc_record<'a>(
         input: &'_ mut InputStream<'a>,
     ) -> FaultableResult<'a, (Self, DiscRecord)> {
@@ -91,6 +108,8 @@ impl MapBlock {
 
         // Parse the allocation map.
         let params = AllocationParsingParams::new(header.free_link, &disc_record);
+        // Parsing the AM expects *only* the sector as input, the end point of the
+        // stream is load-bearing.
         let allocations = AllocationMap::parse(&mut sector, &params)?;
 
         // Advance the input to the beginning of the next sector.
@@ -112,12 +131,11 @@ impl MapBlock {
         self.allocations.get_fragments(id)
     }
 
-    /// Run the zone check and create a fault code if needed
+    /// Run the zone check and create a fault code if needed.
     fn test_checksum(expected_zone_check: u8, sector: &[u8]) -> Option<Fault> {
         // Do the zone checksum since we have this data. The calculation does not
         // advance the stream.
         let actual_zone_check = MapBlock::calculate_zone_check(sector);
-        // Set up fault code if checksum failed
         if actual_zone_check != expected_zone_check {
             Some(Fault::ZoneCheckFailure {
                 actual: actual_zone_check,

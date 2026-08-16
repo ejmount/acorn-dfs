@@ -26,9 +26,9 @@ const BOOT_BLOCK_OFFSET: usize = 0xC00 + 0x1C0;
 /// The "new"-style file allocation map structure, used by format E and F
 /// disks.
 ///
-/// Format E and F disks are conceptually divided into a number of zones,
+/// Format E and F disks are divided into a number of zones,
 /// with one [`MapBlock`] per zone. Conceptually, the first Map Block is
-/// special because it contains the [`DiscRecord`], which charcteristics
+/// special because it contains the [`DiscRecord`], which characterises
 /// the geometry of the disk. Parsing the collection of `MapBlocks` is
 /// not straightforward because the exact size of a `MapBlock` is
 /// defined by the disc geometry recorded in the `DiscRecord`.

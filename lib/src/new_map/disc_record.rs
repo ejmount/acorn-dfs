@@ -4,16 +4,16 @@ use winnow::binary::{le_u8, le_u16, le_u32};
 use winnow::combinator::{seq, trace};
 use winnow::token::take;
 
-use super::super::util::{DiscPosition, FixedLenString, InputStream, ParseResult};
 use super::disc_header::Header;
 use crate::error::{Fault, STRICT_MODE};
+use crate::util::{DiscPosition, FixedLenString, InputStream, ParseResult};
 
 /// Various metadata describing the overall disk geometry and "global"
 /// filesystem metadata. Some values are particularly important as they are
 /// needed to parse other structures on disk:
 /// 1. `log2_sec_size`: the sector size, stored in its base-2 log form
 /// 2. `idlen`: the length of a [`FragmentId`], in bits
-/// 3. `root_dir`: the position of the root directory record, as a byte offset
+/// 3. `root_dir`: the position of the root directory record, as a bit offset
 /// 4. `log2_bytes_per_mapbit` - the number of bytes represented by each bit in
 ///    the Allocation Map
 #[derive(Debug, Clone, Serialize)]
@@ -22,15 +22,30 @@ pub(crate) struct DiscRecord {
     pub(crate) secs_per_track: u8,
     pub(crate) heads: u8,
     pub(crate) density: u8,
+    /// The length of the identifier in this disc's
+    /// [`FragmentBlock`](`super::fragment_block::FragmentBlock`)
     pub(crate) idlen: u8,
     pub(crate) log2_bytes_per_mapbit: u8,
     pub(crate) skew: u8,
-    // TODO: Model these better
+    /// Boot flags.
+    /// TODO: Model these better
     pub(crate) boot_options: u8,
     pub(crate) low_sector: u8,
+    /// Number of zones in this disc. Always 1 for format E.
     pub(crate) num_zones: u8,
+    /// Number of bits excluded from the Allocation Map.
+    ///
+    /// Counts backwards from the end of the next zone's header. Subtracting the
+    /// length of the header (32 bits) and then dividing by 8 gives the number
+    /// of bytes of the Map sector that are excluded.
     pub(crate) zone_spare: u16,
+    /// The indirect position of the root directory.
+    ///
+    /// The root directory is often part of the system object (id 2) so the
+    /// sector offset part of this value is frequently not zero, unlike other
+    /// positions.
     pub(crate) root_dir: DiscPosition,
+    /// Total size of the whole disc, in bytes.
     pub(crate) size: u32,
     pub(crate) disc_id: u16,
     pub(crate) disc_name: FixedLenString,
@@ -85,6 +100,11 @@ impl DiscRecord {
             }
         }
     }
+
+    /// Parses the fields of the new-map disc record.
+    ///
+    /// Can fail with:
+    /// - [`Fault::UnacceptableSectorSize`]
     pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
         trace(
             "DiscRecord",
