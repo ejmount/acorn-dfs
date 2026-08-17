@@ -3,8 +3,7 @@ use winnow::Parser;
 use winnow::binary::{le_u8, le_u16};
 use winnow::combinator::{seq, trace};
 
-use super::super::util::InputStream;
-use crate::util::ParseResult;
+use crate::util::{InputStream, ParseResult};
 
 /// A prefix of a [`MapBlock`], containing various checks and the pointer to
 /// beginning of the free list
