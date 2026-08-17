@@ -3,7 +3,7 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use acorn_dfs::error::FaultValue;
-use acorn_dfs::sys_structures::{Format, NewMapDisk};
+use acorn_dfs::new_map::new_map_disk::{Format, NewMapDisk};
 use insta::{assert_debug_snapshot, with_settings};
 
 #[test]

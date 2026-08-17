@@ -12,3 +12,4 @@ pub(crate) mod disc_record;
 pub(crate) mod fragment_block;
 pub(crate) mod map_block;
 pub(crate) mod new_map;
+pub mod new_map_disk;
