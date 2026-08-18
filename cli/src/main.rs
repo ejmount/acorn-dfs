@@ -2,7 +2,7 @@ use std::ffi::{OsStr, OsString};
 use std::ops::Deref;
 use std::path::PathBuf as OsPath;
 use acorn_dfs::error::{Error, FaultValue, IoError};
-use acorn_dfs::filesystem::DirEntry;
+use acorn_dfs::directory::DirEntry;
 use acorn_dfs::sys_structures::Path;
 use acorn_dfs::new_map::new_map_disk::NewMapDisk;
 use clap::{Parser, ValueEnum};

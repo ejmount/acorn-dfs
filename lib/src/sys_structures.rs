@@ -8,7 +8,7 @@ use std::ops::Index;
 use winnow::Parser;
 use winnow::combinator::{opt, preceded, separated, terminated};
 
-use super::filesystem::{DirEntry, Directory};
+use super::directory::{DirEntry, Directory};
 use super::util::{FixedLenString, make_input};
 
 pub(crate) type FileTree = BTreeMap<Path, FileObject>;

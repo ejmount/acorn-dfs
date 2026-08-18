@@ -6,8 +6,8 @@ use std::range::Range;
 use winnow::Parser;
 use winnow::stream::Stream;
 
+use crate::directory::{Attributes, DirEntry, Directory};
 use crate::error::{Error, Fault, FaultValue, IoError};
-use crate::filesystem::{Attributes, DirEntry, Directory};
 use crate::new_map::new_map::NewMap;
 use crate::sys_structures::{FileObject, FileTree, Path};
 use crate::util::{DiscPosition, make_input};
