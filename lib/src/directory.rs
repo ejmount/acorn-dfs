@@ -9,7 +9,7 @@ use winnow::stream::Location;
 use winnow::token::take;
 
 use super::error::{Fault, FaultValue, STRICT_MODE};
-use super::sys_structures::Path;
+use super::filesystem::Path;
 use super::util::{
     BitPosition,
     DiscPosition,

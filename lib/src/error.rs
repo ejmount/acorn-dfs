@@ -1,7 +1,7 @@
 use thiserror::Error;
 use winnow::error::ErrMode;
 
-use super::sys_structures::Path;
+use super::filesystem::Path;
 use super::util::{BitPosition, DiscPosition, ParseError};
 
 pub(crate) const STRICT_MODE: bool = true;

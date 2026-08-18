@@ -9,7 +9,7 @@ use winnow::stream::Stream;
 use crate::directory::{Attributes, DirEntry, Directory};
 use crate::error::{Error, Fault, FaultValue, IoError};
 use crate::new_map::new_map::NewMap;
-use crate::sys_structures::{FileObject, FileTree, Path};
+use crate::filesystem::{FileObject, FileTree, Path};
 use crate::util::{DiscPosition, make_input};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
