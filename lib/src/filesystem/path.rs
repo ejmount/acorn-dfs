@@ -4,7 +4,8 @@ use std::ops::Index;
 use winnow::Parser;
 use winnow::combinator::{opt, preceded, separated, terminated};
 
-use crate::util::{FixedLenString, make_input};
+use super::FixedLenString;
+use crate::util::make_input;
 
 /// Represents a Path on the ADFS filesystem.
 ///
@@ -143,7 +144,7 @@ impl<'a> Extend<&'a Path> for Path {
 #[cfg(test)]
 mod test {
     use super::Path;
-    use crate::util::FixedLenString;
+    use crate::filesystem::FixedLenString;
 
     #[test]
     fn parse_paths() {

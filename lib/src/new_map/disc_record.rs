@@ -6,7 +6,8 @@ use winnow::token::take;
 
 use super::disc_header::Header;
 use crate::error::{Fault, STRICT_MODE};
-use crate::util::{DiscPosition, FixedLenString, InputStream, ParseResult};
+use crate::filesystem::FixedLenString;
+use crate::util::{DiscPosition, InputStream, ParseResult};
 
 /// Various metadata describing the overall disk geometry and "global"
 /// filesystem metadata. Some values are particularly important as they are

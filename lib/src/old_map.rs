@@ -4,7 +4,8 @@ use winnow::combinator::repeat;
 use winnow::stream::Location;
 use winnow::token::{any, take};
 
-use crate::util::{FixedLenString, InputStream, ParseResult};
+use crate::filesystem::FixedLenString;
+use crate::util::{InputStream, ParseResult};
 
 const MAX_FREE_SPACE_ENTRIES: usize = 82;
 const FREE_SPACE_MAP_LENGTH: usize = 512;
@@ -120,7 +121,7 @@ mod test {
     use insta::assert_compact_debug_snapshot;
 
     use super::FreeSpaceMap;
-    use crate::util::FixedLenString;
+    use crate::filesystem::FixedLenString;
 
     #[test]
     fn test_names() {

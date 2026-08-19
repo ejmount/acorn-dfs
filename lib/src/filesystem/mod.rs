@@ -10,6 +10,9 @@ pub(crate) type FileTree = BTreeMap<Path, FileObject>;
 mod path;
 pub use path::Path;
 
+mod fixed_len_string;
+pub use fixed_len_string::FixedLenString;
+
 /// An entry for the [`FileTree`], representing either a directory or a file.
 ///
 /// This does not correspond neatly to disk structures, where a [`DirEntry`]

@@ -9,15 +9,8 @@ use winnow::stream::Location;
 use winnow::token::take;
 
 use super::error::{Fault, FaultValue, STRICT_MODE};
-use super::filesystem::Path;
-use super::util::{
-    BitPosition,
-    DiscPosition,
-    FaultableResult,
-    FixedLenString,
-    InputStream,
-    ParseResult,
-};
+use super::filesystem::{FixedLenString, Path};
+use super::util::{BitPosition, DiscPosition, FaultableResult, InputStream, ParseResult};
 
 pub(crate) const MAX_SEGMENT_LENGTH: usize = 10;
 pub(crate) const MAX_TITLE_LENGTH: usize = 19;
