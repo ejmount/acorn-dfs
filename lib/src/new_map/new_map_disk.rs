@@ -7,9 +7,9 @@ use winnow::Parser;
 use winnow::stream::Stream;
 
 use crate::directory::{Attributes, DirEntry, Directory};
-use crate::error::{Error, Fault, FaultValue, IoError};
-use crate::new_map::new_map::NewMap;
+use crate::error::{ErrExt, Error, FaultValue, IoError, Warning};
 use crate::filesystem::{FileObject, FileTree, Path};
+use crate::new_map::new_map::NewMap;
 use crate::util::{DiscPosition, make_input};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +37,7 @@ pub struct NewMapDisk {
     pub(crate) tree: RefCell<FileTree>,
     /// A list of non-fatal faults encountered while parsing the disk data. This
     /// includes validation failures, etc.
-    pub faults: Vec<Fault>,
+    pub faults: Vec<Warning>,
 }
 
 impl Debug for NewMapDisk {
@@ -54,25 +54,31 @@ impl Debug for NewMapDisk {
 impl NewMapDisk {
     // Entry point for creating Format-E disks. The resulting structure does not
     // populate the file tree.
-    pub fn parse<'a>(bytes: &'a [u8], format: Format) -> Result<Self, Error<'a>> {
+    pub fn parse(bytes: &[u8], format: Format) -> Result<Self, Error> {
         let image = bytes.to_vec();
         let mut input = make_input(bytes);
 
         let FaultValue(map, mut faults) = match format {
-            Format::E => NewMap::parse_format_e(&mut input)?,
-            Format::F => NewMap::parse_format_f(&mut input)?,
+            Format::E => NewMap::parse_format_e(&mut input).note_dynamic("parsing format E")?,
+            Format::F => NewMap::parse_format_f(&mut input).note_dynamic("parsing format F")?,
             Format::Automatic => {
-                let as_e = NewMap::parse_format_e(&mut input);
+                let as_e = NewMap::parse_format_e(&mut input)
+                    .note_dynamic("parsing format E in automatic mode");
                 let as_f;
                 if let Ok(e) = as_e {
                     e
                 } else {
                     input.reset_to_start();
-                    as_f = NewMap::parse_format_f(&mut input);
+                    as_f = NewMap::parse_format_f(&mut input)
+                        .note_dynamic("parsing format F in automatic mode");
                     if let Ok(f) = as_f {
                         f
                     } else {
-                        panic!("Failed to parse\nAs format E: {as_e:?}\nAs format F: {as_f:?}")
+                        panic!(
+                            "Failed to parse\nAs format E: {}\nAs format F: {}",
+                            as_e.unwrap_err(),
+                            as_f.unwrap_err()
+                        )
                     }
                 }
             }
@@ -97,24 +103,23 @@ impl NewMapDisk {
         serde_json::to_string_pretty(&self.map).unwrap()
     }
 
-    pub(crate) fn create_initial_file_tree<'a>(
-        image: &'a [u8],
+    pub(crate) fn create_initial_file_tree(
+        image: &[u8],
         map: &NewMap,
-    ) -> Result<FaultValue<FileTree>, Error<'a>> {
+    ) -> Result<FaultValue<FileTree>, Error> {
         let mut tree = FileTree::new();
         let mut faults = vec![];
 
         let root_link = map.get_disc_record().root_dir;
         let sector_size = map.get_disc_record().sector_size_in_bytes();
-        let FaultValue(root_dir, root_faults) = Self::retrieve_directory(
-            map,
-            image,
-            root_link,
-            Fault::InvalidRoot {
-                root_link,
-                sector_size,
-            },
-        )?;
+        let FaultValue(root_dir, root_faults) = Self::retrieve_directory(map, image, root_link)
+            .warning(
+                Warning::InvalidRoot {
+                    root_link,
+                    sector_size,
+                },
+                None,
+            )?;
         faults.extend(root_faults);
 
         for child in root_dir.entries.iter().cloned() {
@@ -134,8 +139,9 @@ impl NewMapDisk {
     /// - [`IoError::MissingTarget`]: Path does not exist on disk
     /// - [`IoError::InvalidTarget`]: some subset of the Path points to a file
     ///   rather than a folder
-    /// - [`ParseError`]: A directory structure on disk was invalid
-    pub(crate) fn populate_path(&self, path: &Path) -> Result<FaultValue<()>, Error<'_>> {
+    /// - [`ErrorContext`](`crate::error::ErrorContext`): A directory structure
+    ///   on disk was invalid
+    pub(crate) fn populate_path(&self, path: &Path) -> Result<FaultValue<()>, Error> {
         let mut overall_faults = vec![];
 
         // Walk up down the parent folders for the given path, root first.
@@ -207,12 +213,9 @@ impl NewMapDisk {
 
             // Using the metadata from the child entry, look at the disk bytes for the
             // actual directory listing
-            let FaultValue(child_directory, faults) = Self::retrieve_directory(
-                &self.map,
-                &self.image,
-                child_entry.address,
-                Fault::InvalidDir { path: stem.clone() },
-            )?;
+            let FaultValue(child_directory, faults) =
+                Self::retrieve_directory(&self.map, &self.image, child_entry.address)
+                    .warning(Warning::InvalidDir { path: stem.clone() }, None)?;
             // If the new entry has fault codes, store those
             overall_faults.extend(faults);
 
@@ -240,12 +243,11 @@ impl NewMapDisk {
 
     /// Retrieve the section of the disk that corresponds to the given address
     /// and parse it as [`Directory`] object.
-    pub(crate) fn retrieve_directory<'a>(
+    pub(crate) fn retrieve_directory(
         map: &NewMap,
-        image: &'a [u8],
+        image: &[u8],
         addr: DiscPosition,
-        context: impl Into<Option<Fault>>,
-    ) -> Result<FaultValue<Directory>, Error<'a>> {
+    ) -> Result<FaultValue<Directory>, Error> {
         let disc_object = map.get_disc_object(addr)?;
 
         let entry_regions = disc_object
@@ -265,11 +267,8 @@ impl NewMapDisk {
         let mut cursor = make_input(image);
         cursor.next_slice(start);
 
-        let result = if let Some(c) = context.into() {
-            Directory::parse.context(c).parse_next(&mut cursor)
-        } else {
-            Directory::parse.parse_next(&mut cursor)
-        };
+        let result = Directory::parse.parse_next(&mut cursor);
+
         result.map_err(Into::into)
     }
     /// Gets the metadata and contents of a given path
@@ -277,7 +276,7 @@ impl NewMapDisk {
         &self,
         path: &Path,
         dest: &mut dyn Write,
-    ) -> Result<FaultValue<DirEntry>, Error<'_>> {
+    ) -> Result<FaultValue<DirEntry>, Error> {
         self.populate_path(path)?;
 
         // This should not be able to fail because we bailed if `populate_path` failed
@@ -296,7 +295,7 @@ impl NewMapDisk {
         Ok(FaultValue::from(dir_entry.clone()))
     }
 
-    pub fn entries(&self, prefix: Option<Path>) -> Result<Vec<Path>, Error<'_>> {
+    pub fn entries(&self, prefix: Option<Path>) -> Result<Vec<Path>, Error> {
         let prefix = prefix.unwrap_or(Path::ROOT_PATH);
 
         loop {

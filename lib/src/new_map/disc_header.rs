@@ -3,6 +3,7 @@ use winnow::Parser;
 use winnow::binary::{le_u8, le_u16};
 use winnow::combinator::{seq, trace};
 
+use crate::error::ErrExt;
 use crate::util::{InputStream, ParseResult};
 
 /// A prefix of a [`MapBlock`], containing various checks and the pointer to
@@ -27,7 +28,7 @@ pub(crate) struct Header {
 
 impl Header {
     pub(crate) const LENGTH: usize = 4;
-    pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
+    pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<Self> {
         trace(
             "Header",
             seq! {
@@ -39,5 +40,6 @@ impl Header {
             },
         )
         .parse_next(input)
+        .note("parsing header")
     }
 }

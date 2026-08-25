@@ -4,13 +4,14 @@ use std::fmt::Debug;
 use winnow::Parser;
 use winnow::binary::bits::bits;
 use winnow::combinator::trace;
-use winnow::error::{ErrMode, FromExternalError};
+use winnow::error::FromExternalError;
 use winnow::stream::Location;
 
 use super::fragment_block::FragmentBlock;
-use crate::error::Fault;
+use crate::error::{ErrExt, Fault};
 use crate::util::{
     AllocationParsingParams,
+    BitErr,
     BitInput,
     BitPosition,
     FragmentId,
@@ -72,7 +73,7 @@ impl AllocationMap {
     pub(crate) fn parse<'a>(
         input: &mut InputStream<'a>,
         params: &AllocationParsingParams,
-    ) -> ParseResult<'a, Self> {
+    ) -> ParseResult<Self> {
         debug_assert!(
             input.len() <= params.sector_size(),
             "Expected only one sector, but input.len() = {} > sector_size = {}",
@@ -81,14 +82,14 @@ impl AllocationMap {
         );
         trace(
             "AllocationBytes",
-            move |input: &mut InputStream<'a>| -> Result<AllocationMap, ErrMode<ParseError<'a>>> {
+            move |input: &mut InputStream<'a>| -> ParseResult<AllocationMap> {
                 let starting_point = input.current_token_start();
 
                 let mut bits_remaining = 8 * (input.len() - params.trailing_bytes);
 
                 // The process here is to read and digest the entire collection of fragment
                 // blocks...
-                let mut fragments = bits(|input: &mut BitInput<'a>| -> Result<_, ErrMode<_>> {
+                let mut fragments = bits(|input: &mut BitInput<'a>| -> Result<_, BitErr<'_>> {
                     let mut fragments = HashMap::new();
                     while bits_remaining > 0 {
                         let mut fragment_block = FragmentBlock::parse(input, params)?;
@@ -109,13 +110,14 @@ impl AllocationMap {
                 // (A free link of 0 would mean no free blocks.)
                 if params.free_link() != 0 {
                     Self::walk_free_chain(&mut fragments, params.free_link(), starting_point)
-                        .map_err(|e| ErrMode::from_external_error(input, e))?;
+                        .map_err(|e| ParseError::from_external_error(input, e))?;
                 }
 
                 Ok(AllocationMap { fragments })
             },
         )
         .parse_next(input)
+        .note("parsing allocation map")
     }
 
     /// Walks the list of free-space fragments beginning from the given

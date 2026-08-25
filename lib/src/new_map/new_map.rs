@@ -10,8 +10,8 @@ use super::disc_object::DiscObject;
 use super::disc_record::DiscRecord;
 use super::map_block::MapBlock;
 use crate::directory::DirEntry;
-use crate::error::{Fault, FaultValue, IoError};
-use crate::util::{DiscPosition, FaultableResult, InputStream, ParseResult};
+use crate::error::{FaultValue, IoError, Warning};
+use crate::util::{DiscPosition, InputStream, ParseResult};
 
 /// The xor of the cross check header values should be this value
 ///
@@ -49,7 +49,7 @@ pub struct NewMap {
 
 impl NewMap {
     /// Construct a format-E NewMap out of the given byte stream
-    pub fn parse_format_e<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
+    pub fn parse_format_e<'a>(input: &mut InputStream<'a>) -> ParseResult<FaultValue<Self>> {
         let FaultValue((leading_block, disc_record), mut faults) =
             MapBlock::parse_with_disc_record(input)?;
 
@@ -61,13 +61,13 @@ impl NewMap {
         };
 
         if new_map.cross_check() != EXPECTED_CROSS_CHECK {
-            faults.push(Fault::CrossCheckFailure(new_map.cross_check()));
+            faults.push(Warning::CrossCheckFailure(new_map.cross_check()));
         }
 
         Ok(FaultValue(new_map, faults))
     }
 
-    pub fn parse_format_f<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
+    pub fn parse_format_f<'a>(input: &mut InputStream<'a>) -> ParseResult<FaultValue<Self>> {
         let boot_block = Self::get_boot_block(*input)?;
 
         let zone_count = boot_block.num_zones;
@@ -96,7 +96,7 @@ impl NewMap {
         ))
     }
 
-    fn get_boot_block(mut input: InputStream<'_>) -> ParseResult<'_, DiscRecord> {
+    fn get_boot_block(mut input: InputStream<'_>) -> ParseResult<DiscRecord> {
         let _ = input.next_slice(BOOT_BLOCK_OFFSET);
 
         DiscRecord::parse(&mut input)

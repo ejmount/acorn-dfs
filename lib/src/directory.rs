@@ -8,14 +8,16 @@ use winnow::combinator::{repeat, seq, trace};
 use winnow::stream::Location;
 use winnow::token::take;
 
-use super::error::{Fault, FaultValue, STRICT_MODE};
+use super::error::{Fault, FaultValue};
 use super::filesystem::{FixedLenString, Path};
-use super::util::{BitPosition, DiscPosition, FaultableResult, InputStream, ParseResult};
+use super::util::{BitPosition, DiscPosition, InputStream};
+use crate::error::Warning;
+use crate::util::{ParseError, ParseResult};
 
 pub(crate) const MAX_SEGMENT_LENGTH: usize = 10;
 pub(crate) const MAX_TITLE_LENGTH: usize = 19;
 
-fn parse_magic_string<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, ()> {
+fn parse_magic_string<'a>(input: &mut InputStream<'a>) -> Result<(), ParseError> {
     take(4usize)
         .try_map(|b: &[u8]| {
             if b == b"Hugo" || b == b"Nick" {
@@ -38,7 +40,7 @@ impl Directory {
     pub(crate) const LENGTH: usize =
         DirHeader::LENGTH + Self::DIRECTORY_CAPACITY * DirEntry::LENGTH + DirTail::LENGTH;
 
-    pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
+    pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> Result<FaultValue<Self>, ParseError> {
         trace("Directory", |input: &mut InputStream<'a>| {
             let (header, start_data) = DirHeader::parse.with_taken().parse_next(input)?;
 
@@ -72,7 +74,7 @@ impl Directory {
             };
 
             if directory.header.start_seq_num != directory.tail.end_seq_num {
-                faults.push(Fault::SequenceNumberMismatch {
+                faults.push(Warning::SequenceNumberMismatch {
                     path: Path::default(),
                     start_seq_num: directory.header.start_seq_num,
                     end_seq_num: directory.tail.end_seq_num,
@@ -80,7 +82,7 @@ impl Directory {
             }
 
             if check_byte != directory.tail.check_byte {
-                faults.push(Fault::CheckByteFailure {
+                faults.push(Warning::CheckByteFailure {
                     path: Path::from_segments(&[directory.tail.name]),
                     expected: directory.tail.check_byte,
                     actual: check_byte,
@@ -135,7 +137,7 @@ pub(crate) struct DirHeader {
 impl DirHeader {
     pub(crate) const LENGTH: usize = 1;
 
-    fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, DirHeader> {
+    fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<DirHeader> {
         trace(
             "DirHeader",
             seq! {
@@ -160,7 +162,7 @@ pub struct DirEntry {
 }
 impl DirEntry {
     pub(crate) const LENGTH: usize = MAX_SEGMENT_LENGTH + 4 + 4 + 4 + DiscPosition::LENGTH + 1;
-    fn parse<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
+    fn parse<'a>(input: &mut InputStream<'a>) -> Result<FaultValue<Self>, ParseError> {
         let obj_name = trace("obj_name", FixedLenString::parse_from_disk).parse_next(input)?;
         let load = trace("load", le_u32).parse_next(input)?;
         let exec = trace("exec", le_u32).parse_next(input)?;
@@ -168,7 +170,7 @@ impl DirEntry {
         let address = trace("address", DiscPosition::parse_for_new_map).parse_next(input)?;
         let FaultValue(attrs, mut fault) = Attributes::parse(input)?;
         fault.iter_mut().for_each(|f| {
-            if let Fault::InvalidAttr { path, .. } = f {
+            if let Warning::InvalidAttr { path, .. } = f {
                 *path = Path::from_segments(&[obj_name]);
             }
         });
@@ -198,7 +200,7 @@ pub(crate) struct DirTail {
 }
 impl DirTail {
     const LENGTH: usize = 4 + MAX_TITLE_LENGTH + MAX_SEGMENT_LENGTH + 1 + 1;
-    fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, DirTail> {
+    fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<DirTail> {
         trace(
             "DirTail",
             seq! {
@@ -230,27 +232,20 @@ bitflags::bitflags! {
     }
 }
 impl Attributes {
-    fn parse<'a>(input: &mut InputStream<'a>) -> FaultableResult<'a, Self> {
-        if STRICT_MODE {
-            let pos = input.current_token_start();
-            trace("Attributes", le_u8)
-                .map(|attr_value| match Attributes::from_bits(attr_value) {
-                    Some(a) => a.into(),
-                    None => FaultValue(
-                        Attributes::from_bits_retain(attr_value),
-                        vec![Fault::InvalidAttr {
-                            location: BitPosition::from_bytes(pos),
-                            path: Path::default(),
-                            attr_value,
-                        }],
-                    ),
-                })
-                .parse_next(input)
-        } else {
-            trace("Attributes", le_u8)
-                .parse_next(input)
-                .map(Attributes::from_bits_truncate)
-                .map(Into::into)
-        }
+    fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<FaultValue<Self>> {
+        let pos = input.current_token_start();
+        trace("Attributes", le_u8)
+            .map(|attr_value| match Attributes::from_bits(attr_value) {
+                Some(a) => a.into(),
+                None => FaultValue(
+                    Attributes::from_bits_retain(attr_value),
+                    vec![Warning::InvalidAttr {
+                        location: BitPosition::from_bytes(pos),
+                        path: Path::default(),
+                        attr_value,
+                    }],
+                ),
+            })
+            .parse_next(input)
     }
 }

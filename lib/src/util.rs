@@ -2,18 +2,18 @@
 //! disk or otherwise, but are still used frequently
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::num::NonZero;
 use std::ops::Add;
 
 use serde::Serialize;
 use winnow::binary::bits::Bits;
 use winnow::binary::le_u24;
-use winnow::error::{ErrMode, TreeError};
+use winnow::error::FromExternalError;
 use winnow::stream::Stream;
-use winnow::{BStr, LocatingSlice, ModalResult, Parser};
+use winnow::{BStr, LocatingSlice, Parser};
 
-use super::error::{Fault, FaultValue};
+use super::error::Fault;
 use super::new_map::disc_record::DiscRecord;
+use crate::error::{ErrorContext, error_with_fault};
 
 /// The input used for parsing most structures on disk with winnow combinators.
 ///
@@ -21,23 +21,14 @@ use super::new_map::disc_record::DiscRecord;
 /// the stream of various structures is important for, e.g. offsets in
 /// [`AllocationMap`][`crate::new_map::disc_structures::AllocationMap`]
 pub(crate) type InputStream<'a> = LocatingSlice<&'a BStr>;
-pub(crate) type ParseError<'a> = TreeError<InputStream<'a>, Fault>;
-
-/// Parsing most structures produces either a valid instance of the structure or
-/// a [`ParseError`] which represents unexpected input, but [`ModalResult`] also
-/// covers the possibility that we run off the end of the stream
-pub(crate) type ParseResult<'a, Type, E = ParseError<'a>> = ModalResult<Type, E>;
-
-/// Parsing certain structures can succeed but raise non-fatal issues, encoded
-/// in the [`FaultValue`] pair
-pub(crate) type FaultableResult<'a, Type, E = ParseError<'a>> =
-    ParseResult<'a, FaultValue<Type>, E>;
+pub(crate) type ParseError = ErrorContext;
+pub(crate) type ParseResult<T> = Result<T, ParseError>;
 
 /// Input for parsing the
 /// [`AllocationMap`][`super::disc_structures::AllocationMap`] which is the only
 /// bit-level stream
 pub(crate) type BitInput<'a> = Bits<InputStream<'a>>;
-pub(crate) type BitErr<'a> = TreeError<BitInput<'a>, Fault>;
+pub(crate) type BitErr<'a> = ErrorContext;
 
 /// See [`crate::new_map::disc_structures::FragmentBlock`]. This value has
 /// dynamic length but "...the fragment id cannot be more than 15 bits long." http://www.riscos.com/support/developers/prm/filecore.html#32170
@@ -51,13 +42,11 @@ pub(crate) fn make_input<'a>(input: &'a [u8]) -> InputStream<'a> {
 /// Parses and returns a byte stream in least-significant first order
 ///
 /// This is the opposite order as [winnow::binary::bits::bool] uses.
-pub(crate) fn take_ls_bit<'a>(input: &mut BitInput<'a>) -> ModalResult<bool, BitErr<'a>> {
+pub(crate) fn take_ls_bit<'a>(input: &mut BitInput<'a>) -> Result<bool, BitErr<'a>> {
     let Bits(stream, offset) = input;
-    let byte = stream
-        .peek_token()
-        .ok_or(ErrMode::Incomplete(winnow::error::Needed::Size(
-            NonZero::new(1).unwrap(),
-        )))?;
+    let Some(byte) = stream.peek_token() else {
+        return Err(BitErr::from_external_error(stream, Fault::UnexpectedEof));
+    };
 
     let shaved_byte = byte >> *offset;
     let o = (shaved_byte % 2) > 0;
@@ -157,8 +146,11 @@ pub struct DiscPosition(pub(crate) u32);
 impl DiscPosition {
     pub(crate) const LENGTH: usize = 3;
 
-    pub(crate) fn parse_for_new_map<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
-        le_u24.parse_next(input).map(DiscPosition)
+    pub(crate) fn parse_for_new_map<'a>(input: &mut InputStream<'a>) -> ParseResult<Self> {
+        le_u24
+            .parse_next(input)
+            .map(DiscPosition)
+            .map_err(error_with_fault(Fault::UnexpectedEof, *input))
     }
     pub(crate) fn fragment(&self) -> FragmentId {
         ((self.0 & 0x7F_FF_00) >> 8) as _

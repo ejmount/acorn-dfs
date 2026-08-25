@@ -40,7 +40,7 @@ impl<const LEN: usize> FixedLenString<LEN> {
     /// values correctly.
     pub fn parse_from_byte_str<'a>(
         input: &mut InputStream<'a>,
-    ) -> ParseResult<'a, FixedLenString<LEN>> {
+    ) -> ParseResult<FixedLenString<LEN>> {
         let next_end_char = input
             .offset_for(|c| c.is_ascii_control() || Self::FORBIDDEN_CHARS.contains(&c))
             .unwrap_or(input.len());
@@ -59,7 +59,7 @@ impl<const LEN: usize> FixedLenString<LEN> {
     }
     /// Read a value from a disk image, which reads (and advances the stream by)
     /// exactly `LEN` bytes,
-    pub fn parse_from_disk<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
+    pub fn parse_from_disk<'a>(input: &mut InputStream<'a>) -> ParseResult<Self> {
         // Unlike other methods, this will accept an empty string (containing an initial
         // control character)
         trace(

@@ -5,9 +5,11 @@ use winnow::combinator::{seq, trace};
 use winnow::token::take;
 
 use super::disc_header::Header;
-use crate::error::{Fault, STRICT_MODE};
+use crate::error::{ErrExt, Fault};
 use crate::filesystem::FixedLenString;
 use crate::util::{DiscPosition, InputStream, ParseResult};
+
+const REASONABLE_SECTOR_SIZES: &[usize] = &[256, 512, 1024, 2048, 4096];
 
 /// Various metadata describing the overall disk geometry and "global"
 /// filesystem metadata. Some values are particularly important as they are
@@ -85,7 +87,7 @@ impl DiscRecord {
     }
 
     pub(crate) fn test_sector_size(s: u8) -> Result<u8, Fault> {
-        if !STRICT_MODE || [8, 9, 10, 11].contains(&s) {
+        if REASONABLE_SECTOR_SIZES.contains(&2usize.pow(s as _)) {
             Ok(s)
         } else {
             Err(Fault::UnacceptableSectorSize(s))
@@ -106,7 +108,7 @@ impl DiscRecord {
     ///
     /// Can fail with:
     /// - [`Fault::UnacceptableSectorSize`]
-    pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, Self> {
+    pub(crate) fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<Self> {
         trace(
             "DiscRecord",
             seq! {
@@ -132,6 +134,7 @@ impl DiscRecord {
             },
         )
         .parse_next(input)
+        .note("parsing disc record")
     }
 }
 

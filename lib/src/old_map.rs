@@ -12,7 +12,7 @@ const FREE_SPACE_MAP_LENGTH: usize = 512;
 const DISC_NAME_LENGTH: usize = 10;
 const HALF_NAME_LENGTH: usize = DISC_NAME_LENGTH / 2;
 
-fn parse_3_byte_number<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, u32> {
+fn parse_3_byte_number<'a>(input: &mut InputStream<'a>) -> ParseResult<u32> {
     let [i1, i2, i3] = *take(3usize).parse_next(input)? else {
         unreachable!()
     };
@@ -22,7 +22,7 @@ fn parse_3_byte_number<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, u32> 
 struct SectorNumber(u32);
 
 impl SectorNumber {
-    fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, SectorNumber> {
+    fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<SectorNumber> {
         parse_3_byte_number(input).map(SectorNumber)
     }
 }
@@ -49,7 +49,7 @@ pub struct FreeSpaceMap {
 }
 
 impl FreeSpaceMap {
-    pub fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<'a, FreeSpaceMap> {
+    pub fn parse<'a>(input: &mut InputStream<'a>) -> ParseResult<FreeSpaceMap> {
         let start = input.current_token_start();
 
         let free_space_offsets =

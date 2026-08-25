@@ -104,9 +104,8 @@ fn main() -> Result<(), std::io::Error> {
             Error::LookupError(_) => {
                 unimplemented!();
             }
-            Error::ParseError(err_mode) => {
-                err_mode.map(|e| panic!("{e}"));
-                unimplemented!()
+            Error::ContextError(e) => {
+                panic!("{e}")
             }
         },
     };
@@ -150,11 +149,11 @@ fn read_file(path: &OsStr) -> Result<DataSource, std::io::Error> {
     Ok(src)
 }
 
-fn write_file_plus_metadata<'a>(
-    disk: &'a NewMapDisk,
+fn write_file_plus_metadata(
+    disk: &NewMapDisk,
     destination: OsPath,
     path: &Path,
-) -> Result<(), Error<'a>> {
+) -> Result<(), Error> {
     let mut folder = destination.clone();
 
     // Assume that destination is pointing at a filename, remove the leaf name to

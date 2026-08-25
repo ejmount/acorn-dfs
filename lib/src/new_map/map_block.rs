@@ -5,8 +5,8 @@ use super::allocation_map::AllocationMap;
 use super::disc_header::Header;
 use super::disc_record::DiscRecord;
 use super::fragment_block::FragmentBlock;
-use crate::error::{Fault, FaultValue};
-use crate::util::{AllocationParsingParams, FaultableResult, FragmentId, InputStream, make_input};
+use crate::error::{ErrExt, FaultValue, Warning};
+use crate::util::{AllocationParsingParams, FragmentId, InputStream, ParseResult, make_input};
 
 /// The MapBlock ordinarily contains
 /// 1. various validation checksums in the [`Header`]
@@ -28,7 +28,7 @@ impl MapBlock {
     pub(crate) fn parse<'a>(
         input: &mut InputStream<'a>,
         disc_record: &DiscRecord,
-    ) -> FaultableResult<'a, Self> {
+    ) -> ParseResult<FaultValue<Self>> {
         // Already know the size of the sector ahead of time, so we can immediately
         // create a stream of only this sector.
         let sector_length = disc_record.sector_size_in_bytes();
@@ -78,15 +78,15 @@ impl MapBlock {
     ///   the [free list is not traversable](AllocationMap::walk_free_chain).
     pub(crate) fn parse_with_disc_record<'a>(
         input: &'_ mut InputStream<'a>,
-    ) -> FaultableResult<'a, (Self, DiscRecord)> {
+    ) -> ParseResult<FaultValue<(Self, DiscRecord)>> {
         // Take note of the starting point of the stream so we can use it as a baseline
         let start = input.checkpoint();
 
         // Header is always there
-        let header = Header::parse(input)?;
+        let header = Header::parse(input).note("parsing map block")?;
 
         // Read the Disc Record
-        let disc_record = DiscRecord::parse(input)?;
+        let disc_record = DiscRecord::parse(input).note("parsing map block expecting DR")?;
 
         // Having parsed the header and any disc record, record where we are within the
         // sector
@@ -110,7 +110,8 @@ impl MapBlock {
         let params = AllocationParsingParams::new(header.free_link, &disc_record);
         // Parsing the AM expects *only* the sector as input, the end point of the
         // stream is load-bearing.
-        let allocations = AllocationMap::parse(&mut sector, &params)?;
+        let allocations =
+            AllocationMap::parse(&mut sector, &params).note("parsing map block expecting DR")?;
 
         // Advance the input to the beginning of the next sector.
         input.next_slice(sector_length);
@@ -132,12 +133,12 @@ impl MapBlock {
     }
 
     /// Run the zone check and create a fault code if needed.
-    fn test_checksum(expected_zone_check: u8, sector: &[u8]) -> Option<Fault> {
+    fn test_checksum(expected_zone_check: u8, sector: &[u8]) -> Option<Warning> {
         // Do the zone checksum since we have this data. The calculation does not
         // advance the stream.
         let actual_zone_check = MapBlock::calculate_zone_check(sector);
         if actual_zone_check != expected_zone_check {
-            Some(Fault::ZoneCheckFailure {
+            Some(Warning::ZoneCheckFailure {
                 actual: actual_zone_check,
                 expected: expected_zone_check,
             })

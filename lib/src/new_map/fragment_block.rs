@@ -1,6 +1,6 @@
+use winnow::Parser;
 use winnow::combinator::trace;
 use winnow::stream::Location;
-use winnow::{ModalResult, Parser};
 
 use crate::util::{
     AllocationParsingParams,
@@ -40,7 +40,7 @@ impl FragmentBlock {
     pub(crate) fn parse<'a>(
         input: &mut BitInput<'a>,
         params: &AllocationParsingParams,
-    ) -> ModalResult<Self, BitErr<'a>> {
+    ) -> Result<Self, BitErr<'a>> {
         trace("FragmentBlock", move |input: &mut BitInput<'a>| {
             let idlen = params.fragment_id_length();
             let position = BitPosition::from_bits(8 * input.0.current_token_start() + input.1);
